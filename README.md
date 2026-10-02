@@ -15,11 +15,14 @@ Tudo roda no navegador; nenhuma imagem é enviada para servidor.
 
 ## Estrutura
 
-- `index.html` — o site montado (é o que o GitHub Pages publica)
-- `src/` — fontes: marcação, estilos, lógica de interface (`app.js`) e processamento de imagem (`core.js`)
+- `index.html` — marcação da página (é o que o GitHub Pages publica)
+- `src/base.css` — estilos base da interface
+- `src/soft.css` — camada visual da versão soft (moldura dupla, navegação flutuante, títulos em Rokkitt)
+- `src/app.js` — lógica de interface; `src/core.js` — processamento de imagem e métricas; `src/soft.js` — animações de entrada
 - `funtimod.json` — glifos de referência extraídos dos catálogos
 - `thumbs/` — páginas dos catálogos em baixa resolução
-- `build.py` — remonta o `index.html` a partir de `src/`
+
+Não há etapa de build: é só editar os arquivos e publicar.
 
 Tipografia da interface: Rokkitt (alternativa livre à Memphis) e Host Grotesk, via Google Fonts. O logo usa contornos da Memphis.
 
