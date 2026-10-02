@@ -1,0 +1,153 @@
+
+/* =====================================================================
+   RAMO SOFT — "Editorial Luxury" (high-end-visual-design), nas cores e fontes da marca
+   Creme quente, slab leve nos títulos, muito respiro,
+   cartões em moldura dupla, sombras difusas e tingidas, navegação em
+   ilha flutuante, botões-pílula com ícone aninhado, entrada suave ao rolar.
+   ===================================================================== */
+/* cores do logo (creme, marrom, carmim) e fontes da marca: Rokkitt nos títulos, Host Grotesk no texto */
+:root {
+  --bg: #fbf1e3; --sheet: #fffaf2; --ink: #332c23; --muted: #7c6c5a; --rule: rgb(51 44 35 / 0.09); --soft: #f6e7d2;
+  --amostra: #ca2e55; --catalogo: #332c23; --sobre: #c4ae8e; --guide: #b09d82; --focus: #332c23;
+  --amostra-bg: #fae3e8; --catalogo-bg: #f6e7d2;
+  --bezel: rgb(51 44 35 / 0.04); --hair: rgb(51 44 35 / 0.08);
+  --bar-material: rgb(255 250 242 / 0.72);
+  --shadow: 0 30px 60px -38px rgb(90 62 25 / 0.32), 0 2px 6px -2px rgb(90 62 25 / 0.06);
+  --f-display: "Rokkitt", "Memphis LT Pro", "Rockwell", Georgia, serif;
+  --r: 22px; --r-sm: 14px;
+  --spring: cubic-bezier(0.32, 0.72, 0, 1);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #17130f; --sheet: #211c16; --ink: #ffead0; --muted: #b3a28b; --rule: rgb(255 234 208 / 0.09); --soft: #2c251d;
+  --amostra: #ec5a7f; --catalogo: #ffead0; --sobre: #7d6d58; --guide: #8c7c66; --focus: #ffead0;
+  --amostra-bg: #3a1c25; --catalogo-bg: #2c251d; --bezel: rgb(255 234 208 / 0.035); --hair: rgb(255 234 208 / 0.09);
+  --bar-material: rgb(33 28 22 / 0.72); --shadow: 0 30px 60px -36px rgb(0 0 0 / 0.8); } }
+:root[data-theme="dark"] {
+  --bg: #17130f; --sheet: #211c16; --ink: #ffead0; --muted: #b3a28b; --rule: rgb(255 234 208 / 0.09); --soft: #2c251d;
+  --amostra: #ec5a7f; --catalogo: #ffead0; --sobre: #7d6d58; --guide: #8c7c66; --focus: #ffead0;
+  --amostra-bg: #3a1c25; --catalogo-bg: #2c251d; --bezel: rgb(255 234 208 / 0.035); --hair: rgb(255 234 208 / 0.09);
+  --bar-material: rgb(33 28 22 / 0.72); --shadow: 0 30px 60px -36px rgb(0 0 0 / 0.8); }
+
+body { font-size: 0.9375rem; line-height: 1.6; }
+.wrap { max-width: 1280px; padding-inline: 24px; }
+@media (max-width: 640px) { .wrap { padding-inline: 16px; } }
+body::after { opacity: 0.035; }
+
+/* ---------- navegação: ilha flutuante, solta do topo ---------- */
+.top { background: none; -webkit-backdrop-filter: none; backdrop-filter: none; top: 14px; padding-top: 14px; pointer-events: none; }
+.top::after { display: none; }
+.top .wrap { pointer-events: auto; width: max-content; max-width: calc(100% - 32px); margin-inline: auto; padding: 7px 7px 7px 16px; gap: 10px 16px; flex-wrap: nowrap;
+  background: var(--bar-material); -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
+  border-radius: 999px; box-shadow: 0 0 0 1px var(--hair), inset 0 1px 0 rgb(255 255 255 / 0.5), 0 24px 48px -28px rgb(90 62 25 / 0.35); }
+.brand svg { height: 28px; }
+.steps { background: none; box-shadow: none; padding: 0; }
+.steps .pill { background: var(--ink); box-shadow: none; }
+.steps button { font-weight: 500; padding: 8px 14px; transition: color 400ms var(--spring), transform 160ms var(--spring); }
+.steps button[aria-selected="true"] { color: var(--sheet); }
+.steps button .n { box-shadow: none; background: var(--soft); color: var(--muted); }
+.steps button[aria-selected="true"] .n { background: rgb(255 255 255 / 0.16); color: var(--sheet); }
+.store-pill { margin-left: 0; font-size: 0; gap: 0; }
+.store-pill::before { width: 8px; height: 8px; }
+.theme-btn { width: 36px; height: 36px; background: var(--soft); box-shadow: none; }
+@media (max-width: 1080px) { .steps .x { display: none; } .steps .sx { display: inline; } .steps button .n { display: none; } }
+@media (max-width: 640px) {
+  .top { top: 8px; padding-top: 8px; }
+  .top .wrap { width: auto; flex-wrap: wrap; border-radius: 26px; padding: 8px; }
+  .brand { padding-left: 8px; }
+  .steps { order: 3; width: 100%; }
+  .steps button { padding: 7px 6px; }
+}
+
+/* ---------- abertura de cada etapa: selo + título enorme em serifa ---------- */
+.mast { padding-top: clamp(64px, 9vw, 120px); display: grid; gap: 18px; justify-items: start; }
+.mast-eyebrow { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 5px 12px; font-size: 0.625rem; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); box-shadow: 0 0 0 1px var(--hair); background: var(--sheet); }
+.mast-eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--amostra); }
+.mast-t { font-family: var(--f-display); font-weight: 300; font-size: clamp(3.25rem, 8vw, 7.5rem); line-height: 0.95; letter-spacing: -0.03em; max-width: 14ch; text-wrap: balance; }
+.intro { padding-block: 22px 56px; font-size: 1.0625rem; line-height: 1.65; max-width: 58ch; }
+
+/* ---------- moldura dupla: casca translúcida + núcleo ---------- */
+.stack { gap: 28px; }
+.duo { gap: 28px; }
+.panel, .catsec {
+  border: 6px solid var(--bezel); background-clip: padding-box; background-color: var(--sheet);
+  border-radius: 30px; box-shadow: 0 0 0 1px var(--hair), var(--shadow), inset 0 1px 1px rgb(255 255 255 / 0.55);
+}
+.panel > header { border-bottom: 1px solid var(--rule); padding: 20px 24px 16px; }
+.panel > header h2 { font-family: var(--f-display); font-weight: 400; font-size: 2rem; line-height: 1; letter-spacing: -0.02em; }
+.panel .body { padding: 22px 24px 24px; gap: 18px; }
+.tools { padding: 12px 24px; border-bottom: 1px solid var(--rule); }
+.viewer { border-radius: 0 0 24px 24px; }
+.group { border-bottom: 1px solid var(--rule); }
+.group > .gl { font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+.tgrid { gap: 28px 40px; }
+
+/* ---------- botões: pílulas; o principal leva um ícone aninhado ---------- */
+.btn { border: 0; background: var(--soft); padding: 9px 16px; font-weight: 500; box-shadow: none; transition: transform 160ms var(--spring), background-color 400ms var(--spring), color 400ms var(--spring); }
+.btn:hover { background: color-mix(in srgb, var(--ink) 9%, var(--soft)); }
+.btn:active { transform: scale(0.98); }
+.btn.small { padding: 6px 13px; }
+.btn.primary, .btn.accent, .btn.catalogo { background: var(--ink); color: var(--sheet); padding: 7px 7px 7px 20px; gap: 12px; border: 0; box-shadow: 0 14px 30px -16px rgb(29 26 22 / 0.55); font-size: 0.875rem; }
+.btn.accent { background: var(--amostra); box-shadow: 0 16px 32px -16px color-mix(in srgb, var(--amostra) 80%, transparent); }
+.btn.primary::after, .btn.accent::after, .btn.catalogo::after { content: "↗"; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: rgb(255 255 255 / 0.16); font-size: 0.875rem; transition: transform 500ms var(--spring); }
+.btn.primary:hover, .btn.catalogo:hover { background: color-mix(in srgb, var(--ink) 88%, var(--sheet)); }
+.btn.accent:hover { background: color-mix(in srgb, var(--amostra) 90%, #000); }
+.btn.primary:hover::after, .btn.accent:hover::after, .btn.catalogo:hover::after { transform: translate(2px, -1px) scale(1.06); }
+.btn.danger { color: var(--amostra); }
+.seg { background: var(--soft); box-shadow: none; }
+.seg button { transition: background-color 400ms var(--spring), color 400ms var(--spring); }
+.seg button[aria-pressed="true"] { box-shadow: 0 1px 2px rgb(90 62 25 / 0.12), 0 0 0 1px var(--hair); }
+input[type=text], input[type=search], select, textarea { border: 0; box-shadow: inset 0 0 0 1px var(--hair); background: var(--soft); border-radius: 14px; padding: 10px 14px; }
+input[type=text]:focus, input[type=search]:focus, select:focus, textarea:focus { box-shadow: inset 0 0 0 1px var(--ink), 0 0 0 4px color-mix(in srgb, var(--ink) 8%, transparent); }
+.dest { border-radius: 18px; }
+
+/* ---------- ajuda, rótulos ---------- */
+.more > summary { font-weight: 500; }
+.more > summary::before { box-shadow: none; background: var(--soft); color: var(--muted); }
+
+/* ---------- barra de ação: ilha de vidro flutuante ---------- */
+.actionbar { max-width: 920px; width: 100%; justify-self: center; margin-inline: auto; bottom: 20px; border-radius: 999px; padding: 8px 8px 8px 26px;
+  box-shadow: 0 0 0 1px var(--hair), inset 0 1px 0 rgb(255 255 255 / 0.5), 0 30px 60px -28px rgb(90 62 25 / 0.45); }
+.actionbar .count b { font-family: var(--f-display); font-weight: 400; font-size: 1.5rem; letter-spacing: -0.01em; }
+@media (max-width: 640px) { .actionbar { border-radius: 26px; padding: 12px; } }
+
+/* ---------- identificação ---------- */
+.rank th { font-size: 0.625rem; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; border-bottom: 1px solid var(--rule); }
+.rank td { border-bottom: 1px solid var(--rule); padding: 14px 10px; }
+.rank .fam { font-family: var(--f-display); font-weight: 400; font-size: 1.375rem; letter-spacing: -0.01em; }
+.pos { font-family: var(--f-display); font-weight: 400; font-size: 1.5rem; }
+.rank tbody tr { transition: background-color 400ms var(--spring); }
+.rank tbody tr[aria-selected="true"] { background: var(--soft); }
+.rank tbody tr[aria-selected="true"] td:first-child { box-shadow: none; }
+.rank tbody tr[aria-selected="true"] td:first-child { border-radius: 14px 0 0 14px; } .rank tbody tr[aria-selected="true"] td:last-child { border-radius: 0 14px 14px 0; }
+.bar .track { height: 6px; border-radius: 99px; box-shadow: none; background: var(--soft); }
+.bar .fill { border-radius: 99px; background: linear-gradient(90deg, color-mix(in srgb, var(--amostra) 70%, var(--ink)), var(--amostra)); }
+.metric { border: 4px solid var(--bezel); background-clip: padding-box; background-color: var(--sheet); border-radius: 20px; box-shadow: 0 0 0 1px var(--hair); padding: 12px 14px; }
+.metric .k { font-size: 0.625rem; letter-spacing: 0.16em; text-transform: uppercase; }
+.metric .v { font-family: var(--f-display); font-weight: 400; font-size: 2.5rem; letter-spacing: -0.02em; }
+#cvOv { border-radius: 22px; border: 0; box-shadow: 0 0 0 1px var(--hair), var(--shadow); }
+.strip button { border: 0; box-shadow: 0 0 0 1px var(--hair); border-radius: 16px; transition: transform 400ms var(--spring), box-shadow 400ms var(--spring); }
+.strip button:hover { transform: translateY(-2px); }
+.strip button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+
+/* ---------- catálogo ---------- */
+.catjump { gap: 8px; margin-bottom: 24px; }
+.catjump a { background: var(--sheet); box-shadow: 0 0 0 1px var(--hair); padding: 7px 14px; font-weight: 500; transition: background-color 400ms var(--spring), transform 160ms var(--spring); }
+.catjump a:hover { background: var(--soft); }
+.catsec + .catsec { margin-top: 28px; }
+.catsec > h2 { font-family: var(--f-display); font-weight: 400; font-size: 2.5rem; letter-spacing: -0.02em; padding: 24px 24px 12px; }
+.catsec .fam { border-top: 1px solid var(--rule); }
+.fam > summary { padding: 16px 24px; transition: background-color 400ms var(--spring); }
+.fam > summary h3 { font-family: var(--f-display); font-weight: 400; font-size: 1.5rem; letter-spacing: -0.01em; }
+.fam .body { padding: 0 24px 24px; }
+.atable th { background: var(--soft); border-color: var(--rule); }
+.atable td { border-color: var(--rule); }
+.thumbs img { border-radius: 10px; border: 0; box-shadow: 0 0 0 1px var(--hair); }
+.gcard header h3 { font-family: var(--f-display); font-weight: 400; font-size: 1.625rem; }
+.modal .card { border-radius: 28px; border: 6px solid var(--bezel); background-clip: padding-box; }
+.modal .card > header h3 { font-family: var(--f-display); font-weight: 400; font-size: 1.875rem; }
+.toast { border-radius: 999px; }
+
+/* ---------- entrada suave ao rolar (só transform/opacity/blur) ---------- */
+.reveal { opacity: 0; transform: translateY(28px); filter: blur(6px); }
+.reveal.in { opacity: 1; transform: none; filter: none; transition: opacity 900ms var(--spring), transform 900ms var(--spring), filter 900ms var(--spring); }
+@media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; filter: none; } }
