@@ -68,11 +68,11 @@
           <header><h2>Tratamento</h2></header>
           <div class="body tgrid">
             <div class="group">
+              <div class="gl">Imagem e área</div>
               <div class="row">
                 <label class="btn small" for="fileImg">Abrir imagem…</label>
                 <input type="file" id="fileImg" accept="image/*" hidden>
                 <button class="btn small" id="btnFull">Área inteira</button>
-                <button class="btn small" id="btnVecRoi">Vetorizar recorte (SVG)</button>
               </div>
               <p class="hint">Também dá para arrastar o arquivo para a imagem ou colar (Ctrl/⌘ V). Arraste sobre a imagem para escolher a área.</p>
             </div>
@@ -120,6 +120,14 @@
               <p class="hint mono" id="cleanInfo"></p>
               <details class="more"><summary>O que cada controle faz</summary><div><p><b>Fechar falhas</b> emenda traços quebrados pelo desgaste do tipo ou do papel; a força acompanha a espessura do traço.</p><p><b>Fios</b> apaga linhas retas mais longas que essa porcentagem da altura do recorte (cordas, filetes, riscos de fundo).</p><p><b>Tirar manchas</b> apaga pontos menores que essa porcentagem de uma letra típica do recorte.</p></div></details>
             </div>
+            <div class="group">
+              <div class="gl">Vetorização</div>
+              <div class="row">
+                <button class="btn small" id="btnVecRoi">Vetorizar recorte (SVG)</button>
+                <button class="btn small" id="btnVecEdit">Editar caractere…</button>
+              </div>
+              <p class="hint">Vetorize o recorte inteiro ou abra o caractere selecionado no editor de vetor, com caneta, para fechar falhas e acertar curvas antes de identificar. Duplo clique numa caixa também abre o editor.</p>
+            </div>
           </div>
         </div>
         <div class="duo">
@@ -142,6 +150,7 @@
                 <div class="row">
                   <button class="btn small" id="btnPrev" aria-label="Caixa anterior">←</button>
                   <button class="btn small" id="btnNext" aria-label="Próxima caixa">→</button>
+                  <button class="btn small" id="btnVecEdit2">Editar vetor</button>
                   <button class="btn small danger" id="btnDelBox">Excluir caixa</button>
                 </div>
               </div>
@@ -294,6 +303,7 @@
   </div>
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
+<script src="src/paper-core.min.js"></script>
 <script src="src/imagetracer.min.js"></script>
 <script src="src/core.js"></script>
 <script src="src/app.js"></script>
