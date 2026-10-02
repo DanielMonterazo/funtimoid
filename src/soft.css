@@ -39,7 +39,7 @@ body::after { opacity: 0.035; }
 .top .wrap { pointer-events: auto; width: max-content; max-width: calc(100% - 32px); margin-inline: auto; padding: 7px 7px 7px 16px; gap: 10px 16px; flex-wrap: nowrap;
   background: var(--bar-material); -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
   border-radius: 999px; box-shadow: 0 0 0 1px var(--hair), inset 0 1px 0 rgb(255 255 255 / 0.5), 0 24px 48px -28px rgb(90 62 25 / 0.35); }
-.brand svg { height: 28px; }
+.brand svg { height: 21px; }
 .steps { background: none; box-shadow: none; padding: 0; }
 .steps .pill { background: var(--ink); box-shadow: none; }
 .steps button { font-weight: 500; padding: 8px 14px; transition: color 400ms var(--spring), transform 160ms var(--spring); }
@@ -54,6 +54,7 @@ body::after { opacity: 0.035; }
   .top { top: 8px; padding-top: 8px; }
   .top .wrap { width: auto; flex-wrap: wrap; border-radius: 26px; padding: 8px; }
   .brand { padding-left: 8px; }
+  .brand svg { height: 19px; }
   .steps { order: 3; width: 100%; }
   .steps button { padding: 7px 6px; }
 }
