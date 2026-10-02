@@ -359,6 +359,15 @@ function drawBin() {
   for (let i = 0, j = 0; i < P.bin.length; i++, j += 4) {
     const col = P.bin[i] ? ink : paper; id.data[j] = col[0]; id.data[j + 1] = col[1]; id.data[j + 2] = col[2]; id.data[j + 3] = 255;
   }
+  // caracteres redesenhados no editor de vetor aparecem com o desenho novo
+  S.boxes.forEach((bb) => {
+    if (!vecValid(bb)) return; const b = clampBox(toProc(bb)), v = bb.vec;
+    for (let y = 0; y < v.h; y++) for (let x = 0; x < v.w; x++) {
+      const X = b.x0 + x, Y = b.y0 + y; if (X >= P.w || Y >= P.h) continue;
+      const j = (Y * P.w + X) * 4, col = v.data[y * v.w + x] ? ink : paper;
+      id.data[j] = col[0]; id.data[j + 1] = col[1]; id.data[j + 2] = col[2];
+    }
+  });
   c.putImageData(id, 0, 0);
   const k = P.w / Math.max(1, cv.clientWidth || P.w);
   c.lineWidth = Math.max(1, 1.5 * k);
@@ -369,7 +378,9 @@ function drawBin() {
     const selC = i === S.sel;
     c.strokeStyle = selC ? css('--amostra') : css('--guide');
     c.lineWidth = Math.max(1, (selC ? 2.5 : 1.5) * k);
+    if (vecValid(bb)) c.setLineDash([4 * k, 3 * k]);
     c.strokeRect(b.x0 - 0.5, b.y0 - 0.5, b.x1 - b.x0 + 2, b.y1 - b.y0 + 2);
+    c.setLineDash([]);
     if (bb.label) { c.fillStyle = selC ? css('--amostra') : css('--muted'); c.fillText(bb.label, b.x0, b.y0 - 2 * k); }
   });
   if (S.hover && S.tool !== 'caixas') {
@@ -415,6 +426,11 @@ function drawBin() {
       S.boxes.push(nb); reorder(nb);
     }
     start = null; tempBox = null; drawBin();
+  });
+  cv.addEventListener('dblclick', (e) => {
+    if (!S.proc || S.tool !== 'caixas' || S.sel < 0) return;
+    const p = evtPos(cv, e), b = toProc(S.boxes[S.sel]);
+    if (p.x >= b.x0 - 2 && p.x <= b.x1 + 2 && p.y >= b.y0 - 2 && p.y <= b.y1 + 2) openVecEditor(S.sel);
   });
   cv.addEventListener('keydown', (e) => {
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel >= 0) { e.preventDefault(); delBox(); }
@@ -506,7 +522,10 @@ function applySeq() {
   if (chars.length !== S.boxes.length) toast(`Atenção: ${chars.length} caracteres no texto e ${S.boxes.length} caixas. Confira os rótulos (letras coladas ou pingos separados).`, 5200);
   else toast('Rótulos aplicados em ordem de leitura.');
 }
+function vecValid(bb) { return !!(bb.vec && S.proc && bb.vec.sig === boxSig(bb)); }
+function boxSig(bb) { return [bb.x0, bb.y0, bb.x1, bb.y1, S.proc.sc].map(v => Math.round(v * 100) / 100).join(','); }
 function currentMask(bb) {
+  if (vecValid(bb)) { const v = bb.vec; return Core.extractMask(v.data, v.w, v.h, { x0: 0, y0: 0, x1: v.w - 1, y1: v.h - 1 }); }
   const P = S.proc; const b = clampBox(toProc(bb));
   if (b.x1 < b.x0 || b.y1 < b.y0) return null;
   return Core.extractMask(P.bin, P.w, P.h, b);
@@ -585,12 +604,12 @@ function smoothUp(bin, w, h, s) {
   for (let i = 0; i < W * H; i++) { const v = o[i] >= 0.5 ? 0 : 255; d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v; d[i * 4 + 3] = 255; }
   return { width: W, height: H, data: d };
 }
-function traceSVG(bin, w, h) {
+function traceSVG(bin, w, h, extra = {}) {
   const s = Math.max(1, Math.min(4, Math.floor(Math.sqrt(2.5e6 / (w * h)))));
   const img = smoothUp(bin, w, h, s);
   let svg = ImageTracer.imagedataToSVG(img, {
     numberofcolors: 2, colorsampling: 0, pal: [{ r: 0, g: 0, b: 0, a: 255 }, { r: 255, g: 255, b: 255, a: 255 }],
-    ltres: 0.5, qtres: 0.5, pathomit: 8 * s, roundcoords: 2, viewbox: true, linefilter: true, strokewidth: 0, scale: 1 / s,
+    ltres: 0.5, qtres: 0.5, pathomit: 8 * s, roundcoords: 2, viewbox: true, linefilter: true, strokewidth: 0, scale: 1 / s, ...extra,
   });
   svg = svg.replace(/<path fill="rgb\(255,255,255\)"[^>]*\/>/g, '')
     .replace(/ stroke="[^"]*" stroke-width="[^"]*" opacity="1"/g, '')
@@ -619,6 +638,289 @@ $('btnVecRoi').addEventListener('click', () => {
   setTimeout(() => showSVG(traceSVG(P.bin, P.w, P.h), 'Vetorização do recorte', 'recorte-vetorizado.svg'), 10);
 });
 
+/* =================================================================
+   EDITOR DE VETOR — abre um caractere, traça o contorno em curvas e deixa
+   corrigir com ferramentas de edição de pontos e caneta (somar / subtrair).
+   O resultado volta para o recorte como máscara e entra na identificação.
+   ================================================================= */
+function openVecEditor(idx) {
+  if (!S.proc) { toast('Abra uma imagem primeiro.'); return; }
+  if (idx == null || idx < 0 || !S.boxes[idx]) { toast('Selecione um caractere no recorte tratado (clique na caixa).'); return; }
+  if (!window.paper) { toast('O editor de vetor não carregou. Recarregue a página.'); return; }
+  const P = S.proc, bb = S.boxes[idx], box = clampBox(toProc(bb));
+  const bw = box.x1 - box.x0 + 1, bh = box.y1 - box.y0 + 1;
+  // área de trabalho: a caixa com folga em volta, para completar traços que saem dela
+  const pad = Math.round(Math.max(bw, bh) * 0.25) + 2;
+  const R0 = { x0: Math.max(0, box.x0 - pad), y0: Math.max(0, box.y0 - pad), x1: Math.min(P.w - 1, box.x1 + pad), y1: Math.min(P.h - 1, box.y1 + pad) };
+  const W = R0.x1 - R0.x0 + 1, H = R0.y1 - R0.y0 + 1;
+  // máscara de partida: a edição anterior, se houver; senão o binário da caixa
+  const start = new Uint8Array(W * H);
+  if (vecValid(bb)) {
+    const v = bb.vec, ox = box.x0 - R0.x0, oy = box.y0 - R0.y0;
+    for (let y = 0; y < v.h; y++) for (let x = 0; x < v.w; x++) if (v.data[y * v.w + x] && oy + y < H && ox + x < W) start[(oy + y) * W + ox + x] = 1;
+  } else {
+    for (let y = box.y0; y <= box.y1; y++) for (let x = box.x0; x <= box.x1; x++) if (P.bin[y * P.w + x]) start[(y - R0.y0) * W + (x - R0.x0)] = 1;
+  }
+  // referência: o binário original da área inteira, em cinza
+  const ref = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) ref[y * W + x] = P.bin[(y + R0.y0) * P.w + x + R0.x0];
+
+  // ---------- interface ----------
+  const wrap = document.createElement('div'); wrap.className = 'vec';
+  const bar = document.createElement('div'); bar.className = 'vec-bar';
+  const mkSeg = (items, val, on) => {
+    const g = document.createElement('div'); g.className = 'seg'; g.setAttribute('role', 'group');
+    items.forEach(([v, t, tip]) => { const b = document.createElement('button'); b.type = 'button'; b.dataset.v = v; b.textContent = t; if (tip) b.title = tip; b.setAttribute('aria-pressed', String(v === val)); b.addEventListener('click', () => { g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); on(v); }); g.append(b); });
+    g.set = (v) => g.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.v === v)));
+    return g;
+  };
+  const segTool = mkSeg([['edit', 'Editar pontos', 'Mover pontos e alças (V)'], ['pen', 'Caneta', 'Desenhar uma forma nova (P)']], 'edit', v => setTool(v));
+  segTool.setAttribute('aria-label', 'Ferramenta');
+  const segOp = mkSeg([['add', '+ Somar', 'A forma desenhada é unida ao caractere'], ['sub', '− Subtrair', 'A forma desenhada é recortada do caractere']], 'add', v => { mode = v; drawPreview(); });
+  segOp.setAttribute('aria-label', 'Operação da caneta');
+  const bUndo = button('Desfazer', 'btn small', () => undo());
+  const bRedo = button('Refazer', 'btn small', () => redo());
+  const bSimp = button('Simplificar curvas', 'btn small', () => { snapshot(); glyph.children ? glyph.children.forEach(p => p.simplify(1.2)) : glyph.simplify(1.2); styleGlyph(); changed(); });
+  const bReset = button('Retraçar do recorte', 'btn small', () => { snapshot(); setGlyph(traceToPath(startFromBin())); changed(); });
+  const showRef = document.createElement('label'); showRef.className = 'vec-check';
+  const chk = document.createElement('input'); chk.type = 'checkbox'; chk.checked = true; showRef.append(chk, document.createTextNode(' Original ao fundo'));
+  chk.addEventListener('change', () => { raster.visible = chk.checked; });
+  bar.append(segTool, segOp, bUndo, bRedo, bSimp, bReset, showRef);
+  const stage = document.createElement('div'); stage.className = 'vec-stage';
+  const cv = document.createElement('canvas'); cv.className = 'vec-canvas'; cv.setAttribute('aria-label', `Editor de vetor do caractere ${bb.label || ''}`); cv.tabIndex = 0;
+  stage.append(cv);
+  const tip = document.createElement('p'); tip.className = 'hint vec-tip';
+  const foot = document.createElement('div'); foot.className = 'vec-foot';
+  const stats = document.createElement('span'); stats.className = 'hint';
+  const bSvg = button('Baixar SVG', 'btn small', () => saveFile(`caractere-${slug(bb.label || String(idx + 1))}.svg`, exportSVG()));
+  const bDrop = button('Remover edição', 'btn small danger', () => { delete bb.vec; drawBin(); closeModal(); toast('Edição removida: o caractere volta a vir do recorte.'); });
+  bDrop.hidden = !vecValid(bb);
+  const bApply = button('Usar no recorte', 'btn accent', () => apply());
+  foot.append(stats, bSvg, bDrop, bApply);
+  wrap.append(bar, stage, tip, foot);
+  openModal(`Editar vetor · ${bb.label ? '“' + bb.label + '”' : 'caixa ' + (idx + 1)}`, wrap, { wide: true, onClose: () => teardown() });
+
+  // ---------- paper.js ----------
+  const scope = new paper.PaperScope();
+  const fitCanvas = () => { const r = stage.getBoundingClientRect(); scope.view.viewSize = new scope.Size(Math.max(200, r.width), Math.max(240, r.height)); fitView(); };
+  scope.setup(cv);
+  scope.settings.handleSize = 8; scope.settings.hitTolerance = 0;
+  const C = { ink: css('--ink'), am: css('--amostra'), sheet: css('--sheet') };
+  const bg = new scope.Layer(), main = new scope.Layer(), over = new scope.Layer();
+  main.selectedColor = new scope.Color(C.am);
+  over.selectedColor = new scope.Color(C.am);
+  // fundo: o recorte original em cinza, pixel a pixel
+  bg.activate();
+  const rc = document.createElement('canvas'); rc.width = W; rc.height = H;
+  { const c = rc.getContext('2d'), id = c.createImageData(W, H), col = hexToRgb(C.ink); for (let i = 0; i < W * H; i++) if (ref[i]) { id.data[i * 4] = col[0]; id.data[i * 4 + 1] = col[1]; id.data[i * 4 + 2] = col[2]; id.data[i * 4 + 3] = 70; } c.putImageData(id, 0, 0); }
+  const frame = new scope.Path.Rectangle({ point: [0, 0], size: [W, H], strokeColor: C.ink, strokeWidth: 1, dashArray: [3, 3], opacity: 0.25 });
+  const boxR = new scope.Path.Rectangle({ point: [box.x0 - R0.x0, box.y0 - R0.y0], size: [bw, bh], strokeColor: C.ink, strokeWidth: 1, dashArray: [2, 4], opacity: 0.35 });
+  const raster = new scope.Raster(rc); raster.smoothing = 'off'; raster.bounds = new scope.Rectangle(0, 0, W, H);
+  main.activate();
+  let glyph = null;
+  function startFromBin() { const m = new Uint8Array(W * H); for (let y = box.y0; y <= box.y1; y++) for (let x = box.x0; x <= box.x1; x++) if (P.bin[y * P.w + x]) m[(y - R0.y0) * W + (x - R0.x0)] = 1; return m; }
+  function rdp(pts, eps) {
+    if (pts.length < 3) return pts.slice();
+    const a = pts[0], b = pts[pts.length - 1]; let dm = 0, im = 0;
+    for (let i = 1; i < pts.length - 1; i++) { const d = new scope.Line(a, b).getDistance(pts[i]); if (d > dm) { dm = d; im = i; } }
+    if (dm <= eps) return [a, b];
+    const l = rdp(pts.slice(0, im + 1), eps), r = rdp(pts.slice(im), eps);
+    return l.slice(0, -1).concat(r);
+  }
+  function rdpClosed(pts, eps) {
+    if (pts.length < 4) return pts;
+    let far = 0, dm = 0; pts.forEach((p, i) => { const d = p.getDistance(pts[0]); if (d > dm) { dm = d; far = i; } });
+    const A = rdp(pts.slice(0, far + 1), eps), B = rdp(pts.slice(far).concat([pts[0]]), eps);
+    return A.slice(0, -1).concat(B.slice(0, -1));
+  }
+  function traceToPath(mask) {
+    const svg = traceSVG(mask, W, H, { ltres: 1, qtres: 1, rightangleenhance: true });
+    const grp = scope.project.importSVG(svg, { insert: false, expandShapes: true });
+    const subs = [];
+    grp.getItems({ class: scope.Path }).forEach(p => { if (p.segments.length > 2 && Math.abs(p.area) > 1) subs.push(p.clone({ insert: false })); });
+    // menos pontos: polígono simplificado (Douglas–Peucker) e curvas só onde a direção muda devagar
+    const eps = Math.max(1, Math.max(W, H) / 110);
+    const clean = subs.map(p => {
+      const f = p.clone({ insert: false }); f.flatten(0.25);
+      const q = rdpClosed(f.segments.map(s => s.point), eps);
+      if (q.length < 3) return null;
+      const np = new scope.Path({ segments: q, closed: true, insert: false });
+      const n = np.segments.length;
+      np.segments.forEach((sg, i) => {
+        const a = np.segments[(i - 1 + n) % n].point, c = np.segments[(i + 1) % n].point;
+        const v1 = sg.point.subtract(a), v2 = c.subtract(sg.point);
+        const turn = Math.abs(v1.getDirectedAngle(v2));
+        if (turn < 32 && Math.min(v1.length, v2.length) < Math.max(W, H) * 0.25) sg.smooth({ type: 'catmull-rom', factor: 0.5 });
+      });
+      return np;
+    }).filter(Boolean);
+    const cp = new scope.CompoundPath({ children: clean, insert: false });
+    // buracos e contornos com orientação coerente: o preenchimento "nonzero" passa a valer igual ao "evenodd"
+    cp.reorient(true, true);
+    return cp;
+  }
+  function styleGlyph() {
+    glyph.fillColor = new scope.Color(C.am); glyph.fillColor.alpha = 0.42;
+    glyph.strokeColor = C.am; glyph.strokeWidth = 1.5 / scope.view.zoom; glyph.fillRule = 'nonzero';
+  }
+  function setGlyph(item) {
+    const wasSel = glyph && glyph.selected; if (glyph) glyph.remove();
+    glyph = item; main.addChild(glyph); styleGlyph(); if (wasSel) glyph.fullySelected = true;
+  }
+  setGlyph(traceToPath(start));
+
+  function fitView() {
+    const v = scope.view, padPx = 28;
+    v.zoom = Math.max(0.1, Math.min((v.viewSize.width - 2 * padPx) / W, (v.viewSize.height - 2 * padPx) / H));
+    v.center = new scope.Point(W / 2, H / 2);
+    if (glyph) styleGlyph(); if (pen) pen.strokeWidth = 1.5 / v.zoom;
+  }
+  const ro = new ResizeObserver(() => fitCanvas()); ro.observe(stage);
+
+  // ---------- desfazer / refazer ----------
+  const past = [], future = [];
+  const snapshot = () => { past.push(glyph.pathData); if (past.length > 80) past.shift(); future.length = 0; syncUndo(); };
+  const restore = (d) => { setGlyph(new scope.CompoundPath(d)); glyph.fullySelected = tool === 'edit' && !!selSeg; changed(); };
+  function undo() { if (!past.length) return; future.push(glyph.pathData); restore(past.pop()); syncUndo(); }
+  function redo() { if (!future.length) return; past.push(glyph.pathData); restore(future.pop()); syncUndo(); }
+  function syncUndo() { bUndo.disabled = !past.length; bRedo.disabled = !future.length; }
+  syncUndo();
+
+  // ---------- ferramentas ----------
+  let tool = 'edit', mode = 'add', selSeg = null, drag = null, pen = null, rubber = null, preview = null;
+  const tolPx = () => 9 / scope.view.zoom;
+  function setTool(t) {
+    tool = t; segTool.set(t); cancelPen();
+    segOp.hidden = t !== 'pen';
+    cv.style.cursor = t === 'pen' ? 'crosshair' : 'default';
+    tip.innerHTML = t === 'pen'
+      ? '<b>Caneta:</b> clique para pontos retos, clique e arraste para curvas. Feche clicando no primeiro ponto (ou <kbd>Enter</kbd>). A forma é <b>somada</b> ou <b>subtraída</b> do caractere. <kbd>Esc</kbd> cancela.'
+      : '<b>Editar pontos:</b> arraste pontos e alças; clique no contorno para criar um ponto; <kbd>Delete</kbd> apaga o ponto escolhido; duplo clique alterna canto e curva; arraste o miolo de uma forma para movê-la. <kbd>Alt</kbd> solta as alças.';
+    glyph.fullySelected = t === 'edit';
+    drawPreview();
+  }
+  function hit(pt) { return glyph.hitTest(pt, { segments: true, handles: true, stroke: true, fill: true, tolerance: tolPx() }); }
+  function cancelPen() { if (pen) pen.remove(); if (rubber) rubber.remove(); if (preview) preview.remove(); pen = rubber = preview = null; }
+  function drawPreview() {
+    if (preview) { preview.remove(); preview = null; }
+    if (!pen || pen.segments.length < 2) return;
+    over.activate();
+    preview = pen.clone(); preview.closed = true; preview.strokeColor = null; preview.selected = false;
+    preview.fillColor = mode === 'add' ? new scope.Color(C.am) : new scope.Color(C.ink); preview.fillColor.alpha = mode === 'add' ? 0.25 : 0.18;
+    preview.sendToBack(); main.activate();
+  }
+  function commitPen() {
+    if (!pen || pen.segments.length < 3) { cancelPen(); return; }
+    snapshot();
+    const shape = pen.clone({ insert: false }); shape.closed = true; shape.reorient(true, true);
+    let res = mode === 'add' ? glyph.unite(shape, { insert: false }) : glyph.subtract(shape, { insert: false });
+    if (!(res instanceof scope.CompoundPath)) res = new scope.CompoundPath({ children: [res], insert: false });
+    cancelPen(); setGlyph(res); changed();
+  }
+  const tl = new scope.Tool(); tl.minDistance = 0;
+  tl.onMouseDown = (e) => {
+    cv.focus();
+    if (tool === 'pen') {
+      if (!pen) {
+        over.activate();
+        pen = new scope.Path({ strokeColor: mode === 'add' ? C.am : C.ink, strokeWidth: 1.5 / scope.view.zoom });
+        pen.selectedColor = new scope.Color(C.am); main.activate();
+      } else if (pen.segments.length > 2 && e.point.getDistance(pen.firstSegment.point) < tolPx()) { commitPen(); return; }
+      pen.add(e.point); pen.fullySelected = true; drag = { penSeg: pen.lastSegment }; drawPreview(); return;
+    }
+    const h = hit(e.point); drag = null;
+    if (!h) { selSeg = null; return; }
+    if (h.type === 'segment') { snapshot(); selSeg = h.segment; drag = { kind: 'point', seg: h.segment }; }
+    else if (h.type === 'handle-in' || h.type === 'handle-out') { snapshot(); selSeg = h.segment; drag = { kind: h.type, seg: h.segment }; }
+    else if (h.type === 'stroke' || h.type === 'curve') {
+      snapshot(); const loc = h.location; const nc = loc.curve.divideAtTime(loc.time);
+      selSeg = nc ? nc.segment1 : null; if (selSeg) drag = { kind: 'point', seg: selSeg }; changed();
+    } else if (h.type === 'fill') {
+      // a forma clicada: o subcaminho que contém o ponto e não é buraco
+      const sub = (glyph.children || [glyph]).filter(p => p.contains(e.point) && p.clockwise).sort((a, b) => Math.abs(a.area) - Math.abs(b.area))[0];
+      if (sub) { snapshot(); const holes = (glyph.children || []).filter(p => p !== sub && !p.clockwise && sub.bounds.contains(p.bounds)); drag = { kind: 'move', items: [sub, ...holes] }; }
+    }
+  };
+  tl.onMouseDrag = (e) => {
+    if (tool === 'pen') { if (drag && drag.penSeg) { const s = drag.penSeg; s.handleOut = e.point.subtract(s.point); s.handleIn = s.handleOut.multiply(-1); drawPreview(); } return; }
+    if (!drag) return;
+    const s = drag.seg, alt = e.modifiers.alt || e.modifiers.option;
+    if (drag.kind === 'point') s.point = s.point.add(e.delta);
+    else if (drag.kind === 'handle-in') { s.handleIn = s.handleIn.add(e.delta); if (!alt && !s.handleOut.isZero()) s.handleOut = s.handleIn.normalize(-s.handleOut.length); }
+    else if (drag.kind === 'handle-out') { s.handleOut = s.handleOut.add(e.delta); if (!alt && !s.handleIn.isZero()) s.handleIn = s.handleOut.normalize(-s.handleIn.length); }
+    else if (drag.kind === 'move') drag.items.forEach(p => { p.position = p.position.add(e.delta); });
+    drag.moved = true;
+  };
+  tl.onMouseUp = () => { if (drag && drag.kind && !drag.moved && drag.kind !== 'point') past.pop(), syncUndo(); if (drag && drag.moved) changed(); drag = null; };
+  tl.onMouseMove = (e) => {
+    if (tool !== 'pen' || !pen || !pen.segments.length) return;
+    if (rubber) rubber.remove(); over.activate();
+    const last = pen.lastSegment;
+    rubber = new scope.Path({ segments: [[last.point, null, last.handleOut], [e.point]], strokeColor: C.ink, strokeWidth: 1 / scope.view.zoom, dashArray: [4 / scope.view.zoom, 3 / scope.view.zoom] });
+    main.activate();
+  };
+  cv.addEventListener('dblclick', (ev) => {
+    if (tool !== 'edit') return;
+    const r = cv.getBoundingClientRect(), pt = scope.view.viewToProject(new scope.Point(ev.clientX - r.left, ev.clientY - r.top));
+    const h = glyph.hitTest(pt, { segments: true, tolerance: tolPx() });
+    if (!h) return; snapshot();
+    const s = h.segment; if (s.handleIn.isZero() && s.handleOut.isZero()) s.smooth({ type: 'catmull-rom' }); else { s.handleIn = null; s.handleOut = null; }
+    changed();
+  });
+  const onKey = (e) => {
+    if (document.getElementById('modal').hidden) return;
+    const k = e.key, typing = /INPUT|TEXTAREA/.test((e.target || {}).tagName || '');
+    if (typing) return;
+    if (k === 'Escape' && pen) { e.preventDefault(); e.stopImmediatePropagation(); cancelPen(); return; }
+    if (k === 'Enter' && pen) { e.preventDefault(); commitPen(); return; }
+    if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if (k === 'v' || k === 'V') { setTool('edit'); return; }
+    if (k === 'p' || k === 'P') { setTool('pen'); return; }
+    if ((k === 'Delete' || k === 'Backspace') && tool === 'edit' && selSeg && selSeg.path) {
+      e.preventDefault(); snapshot(); const p = selSeg.path; if (p.segments.length > 3) selSeg.remove(); else p.remove(); selSeg = null; changed();
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
+
+  // ---------- resultado ----------
+  function rasterize() {
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+    x.fillStyle = '#000'; x.fill(new Path2D(glyph.pathData), 'nonzero');
+    const d = x.getImageData(0, 0, W, H).data, m = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) m[i] = d[i * 4 + 3] >= 128 ? 1 : 0;
+    return m;
+  }
+  function exportSVG() {
+    const b = glyph.bounds, p = 2, vb = [b.x - p, b.y - p, b.width + 2 * p, b.height + 2 * p].map(v => Math.round(v * 100) / 100);
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.join(' ')}" width="${vb[2]}" height="${vb[3]}"><path fill="#000" d="${glyph.pathData}"/></svg>`;
+  }
+  function changed() {
+    const subs = glyph.children ? glyph.children.length : 1, pts = (glyph.children || [glyph]).reduce((a, p) => a + p.segments.length, 0);
+    stats.textContent = `${subs} contorno(s) · ${pts} pontos`;
+    if (tool === 'edit') glyph.fullySelected = true;
+  }
+  function apply() {
+    const m = rasterize();
+    let x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (m[y * W + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) { toast('O caractere ficou vazio: desenhe algo antes de usar.'); return; }
+    const nw = x1 - x0 + 1, nh = y1 - y0 + 1, data = new Uint8Array(nw * nh);
+    for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) data[y * nw + x] = m[(y + y0) * W + x + x0];
+    // a caixa passa a abraçar o desenho novo
+    Object.assign(bb, fromProc({ x0: R0.x0 + x0, y0: R0.y0 + y0, x1: R0.x0 + x1, y1: R0.y0 + y1 }));
+    bb.vec = { w: nw, h: nh, data, d: glyph.pathData, sig: '' }; bb.vec.sig = boxSig(bb);
+    S.sel = idx; drawBin(); closeModal();
+    toast(`Caractere ${bb.label ? '“' + bb.label + '” ' : ''}atualizado. A identificação passa a usar o desenho novo.`);
+  }
+  function teardown() { document.removeEventListener('keydown', onKey, true); ro.disconnect(); try { tl.remove(); scope.project.remove(); } catch (e) {} }
+
+  setTool('edit'); changed();
+  requestAnimationFrame(fitCanvas);
+}
+$('btnVecEdit').addEventListener('click', () => openVecEditor(S.sel));
+$('btnVecEdit2').addEventListener('click', () => openVecEditor(S.sel));
+
+
 /* modal */
 function button(text, cls, fn) { const b = document.createElement('button'); b.className = cls; b.textContent = text; b.addEventListener('click', fn); return b; }
 let lastFocus = null, lastPointer = null, modalAnims = [];
@@ -627,8 +929,12 @@ function modalOrigin(card) {
   const r = card.getBoundingClientRect(); const p = lastPointer || { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   card.style.transformOrigin = `${Math.max(0, Math.min(r.width, p.x - r.left))}px ${Math.max(0, Math.min(r.height, p.y - r.top))}px`;
 }
-function openModal(title, node) {
+let modalOnClose = null;
+function openModal(title, node, opts = {}) {
   lastFocus = document.activeElement;
+  if (modalOnClose) { const f = modalOnClose; modalOnClose = null; f(); }
+  modalOnClose = opts.onClose || null;
+  $('modal').querySelector('.card').classList.toggle('wide', !!opts.wide);
   modalAnims.forEach(a => a.cancel()); modalAnims = [];
   $('modalTitle').textContent = title; const mb = $('modalBody'); mb.innerHTML = ''; mb.append(node);
   const m = $('modal'), card = m.querySelector('.card'); m.hidden = false; $('modalClose').focus();
@@ -644,6 +950,7 @@ function closeModal() {
   const m = $('modal'), card = m.querySelector('.card');
   if (m.hidden) return;
   modalAnims.forEach(a => a.cancel());
+  if (modalOnClose) { const f = modalOnClose; modalOnClose = null; f(); }
   const done = () => { m.hidden = true; modalAnims = []; if (lastFocus && lastFocus.focus) lastFocus.focus(); };
   if (reduceMotion()) { done(); return; }
   // volta pelo mesmo caminho, em direção à origem
