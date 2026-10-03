@@ -53,7 +53,7 @@ const S = {
   img: null, disp: null, dispScale: 1,
   roi: null,
   p: { up: 1, mode: 'lum', ink: [200, 40, 90], pol: 'auto', method: 'multi', win: 60, k: 0.25, thr: 128, close: 0, min: 4, vl: 0, hl: 0, levels: 4 },
-  tool: 'borracha', brush: 16, edits: [], hover: null,
+  tool: 'selecao', brush: 16, edits: [], hover: null,
   proc: null,
   boxes: [], sel: -1,
   picking: false,
@@ -87,11 +87,29 @@ const Store = {
         onGlyphs();
       }, (err) => { toast('O acervo compartilhado parou de responder. Recarregue a página.'); console.warn(err); });
     } else {
-      this.mode = 'local'; setPill('local');
-      try { S.glyphs = JSON.parse(localStorage.getItem('bt-glyphs') || '[]'); } catch (e) { S.glyphs = []; }
-      onGlyphs();
+      this.useLocal();
+      if (Cloud.cfg) Cloud.start();
     }
+    renderCloud();
   },
+  useLocal() {
+    if (this.unsub) { this.unsub(); this.unsub = null; }
+    this.mode = 'local'; this.col = null; setPill('local');
+    try { S.glyphs = JSON.parse(localStorage.getItem('bt-glyphs') || '[]'); } catch (e) { S.glyphs = []; }
+    onGlyphs();
+  },
+  useCloud(user) {
+    const F = Cloud.fs;
+    if (this.unsub) this.unsub();
+    this.mode = 'cloud'; this.col = F.collection(Cloud.db, 'users', user.uid, 'glyphs'); setPill('cloud');
+    let first = true;
+    this.unsub = F.onSnapshot(this.col, (snap) => {
+      S.glyphs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      onGlyphs();
+      if (first) { first = false; offerLocalUpload(); }
+    }, (err) => { toast('Não foi possível ler o acervo na nuvem (' + (err.code || 'erro') + ').'); console.warn(err); });
+  },
+  localCount() { try { return JSON.parse(localStorage.getItem('bt-glyphs') || '[]').length; } catch (e) { return 0; } },
   persistLocal() { try { localStorage.setItem('bt-glyphs', JSON.stringify(S.glyphs)); } catch (e) { toast('Este navegador não deixou salvar localmente.'); } },
   async addMany(docs) {
     if (this.mode === 'db') {
@@ -111,22 +129,105 @@ const Store = {
       await Promise.all([worker(), worker(), worker(), worker()]);
       return docs.length - failed;
     }
+    if (this.mode === 'cloud') {
+      const F = Cloud.fs; let ok = 0;
+      try {
+        for (let i = 0; i < docs.length; i += 400) {
+          const b = F.writeBatch(Cloud.db);
+          docs.slice(i, i + 400).forEach(d => b.set(F.doc(this.col), d));
+          await b.commit(); ok += Math.min(400, docs.length - i);
+        }
+      } catch (e) { toast('Não foi possível salvar na nuvem (' + (e.code || 'erro') + ').'); }
+      return ok;
+    }
     for (const d of docs) S.glyphs.push({ id: 'l' + Math.random().toString(36).slice(2, 10), ...d });
     this.persistLocal(); onGlyphs(); return docs.length;
   },
   async remove(ids) {
+    if (this.mode === 'cloud') {
+      const F = Cloud.fs;
+      try { for (let i = 0; i < ids.length; i += 400) { const b = F.writeBatch(Cloud.db); ids.slice(i, i + 400).forEach(id => b.delete(F.doc(this.col, id))); await b.commit(); } }
+      catch (e) { toast('Não foi possível excluir (' + (e.code || 'erro') + ').'); }
+      return;
+    }
     if (this.mode === 'db') { for (const id of ids) { try { await this.col.doc(id).delete(); } catch (e) { toast('Não foi possível excluir: ' + (e.message || e.code)); break; } } return; }
     const set = new Set(ids); S.glyphs = S.glyphs.filter(g => !set.has(g.id)); this.persistLocal(); onGlyphs();
   },
   async relabel(id, label) {
+    if (this.mode === 'cloud') { try { await Cloud.fs.updateDoc(Cloud.fs.doc(this.col, id), { label }); } catch (e) { toast('Não foi possível renomear.'); } return; }
     if (this.mode === 'db') { try { await this.col.doc(id).update({ label }); } catch (e) { toast('Não foi possível renomear.'); } return; }
     const g = S.glyphs.find(x => x.id === id); if (g) g.label = label; this.persistLocal(); onGlyphs();
   },
 };
 function setPill(mode) {
   const p = $('storePill'); p.dataset.mode = mode;
-  p.textContent = mode === 'db' ? 'Acervo compartilhado' : 'Acervo neste navegador';
-  p.title = mode === 'db' ? 'Os glifos ficam salvos com esta página e aparecem para quem tem acesso a ela.' : 'Sem acervo compartilhado nesta visualização: os glifos ficam só neste navegador.';
+  p.textContent = mode === 'db' ? 'Acervo compartilhado' : mode === 'cloud' ? 'Acervo na nuvem' : 'Acervo neste navegador';
+  p.title = mode === 'db' ? 'Os glifos ficam salvos com esta página e aparecem para quem tem acesso a ela.'
+    : mode === 'cloud' ? 'O acervo está salvo na nuvem, na sua conta Google.'
+    : 'O acervo fica só neste navegador. Entre com Google, no painel Salvar no meu acervo, para guardar na nuvem.';
+  renderCloud();
+}
+
+/* ---------- acervo na nuvem (Firebase), só no site publicado fora do Claude ----------
+   Cada pessoa entra com a conta Google e vê apenas as próprias letras (users/{uid}/glyphs). */
+const FB_V = '12.19.0';
+const Cloud = {
+  cfg: window.FUNTIMOID_FIREBASE || null, fs: null, auth: null, db: null, A: null, user: null, ready: false, failed: false,
+  async start() {
+    try {
+      const base = `https://www.gstatic.com/firebasejs/${FB_V}/firebase-`;
+      const [app, A, F] = await Promise.all([import(base + 'app.js'), import(base + 'auth.js'), import(base + 'firestore.js')]);
+      const a = app.initializeApp(this.cfg);
+      this.A = A; this.fs = F; this.auth = A.getAuth(a); this.db = F.getFirestore(a); this.ready = true;
+      A.onAuthStateChanged(this.auth, (u) => { this.user = u; if (u) Store.useCloud(u); else if (Store.mode === 'cloud') Store.useLocal(); renderCloud(); });
+    } catch (e) { this.failed = true; console.warn(e); }
+    renderCloud();
+  },
+  async signIn() {
+    if (!this.ready) { toast('O login ainda está carregando. Tente de novo em instantes.'); return; }
+    const p = new this.A.GoogleAuthProvider();
+    try { await this.A.signInWithPopup(this.auth, p); }
+    catch (e) {
+      if (e && (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment')) { try { await this.A.signInWithRedirect(this.auth, p); } catch (e2) { toast('Não foi possível entrar (' + (e2.code || 'erro') + ').'); } }
+      else if (e && e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') toast('Não foi possível entrar (' + (e.code || 'erro') + ').');
+    }
+  },
+  async signOut() { try { await this.A.signOut(this.auth); toast('Você saiu. O acervo na nuvem continua guardado.'); } catch (e) {} },
+};
+function renderCloud() {
+  document.querySelectorAll('.cloud-slot').forEach(slot => {
+    slot.hidden = !Cloud.cfg || Store.mode === 'db';
+    if (slot.hidden) return;
+    slot.innerHTML = '';
+    const p = document.createElement('p'); p.className = 'hint';
+    const row = document.createElement('div'); row.className = 'row';
+    if (Cloud.user) {
+      p.innerHTML = 'Salvando na nuvem, na conta <b></b>. Abre igual em qualquer computador ou celular.';
+      p.querySelector('b').textContent = Cloud.user.email || Cloud.user.displayName || 'Google';
+      row.append(button('Sair', 'btn small', () => Cloud.signOut()));
+    } else if (Cloud.failed) {
+      p.textContent = 'Não foi possível carregar o login agora. Por enquanto o acervo fica só neste navegador.';
+    } else {
+      p.textContent = 'Por enquanto o acervo fica só neste navegador. Entre com sua conta Google para guardar na nuvem e abrir de qualquer lugar.';
+      row.append(button('Entrar com Google', 'btn small primary', () => Cloud.signIn()));
+    }
+    slot.append(p); if (row.childNodes.length) slot.append(row);
+  });
+}
+let offeredUpload = false;
+function offerLocalUpload() {
+  const n = Store.localCount(); if (!n || offeredUpload) return; offeredUpload = true;
+  const body = document.createElement('div'); body.className = 'side';
+  const p = document.createElement('p'); p.textContent = `Há ${n} letra(s) salvas só neste navegador, de antes do login. Quer enviá-las para o seu acervo na nuvem?`;
+  const row = document.createElement('div'); row.className = 'row';
+  row.append(button('Enviar para a nuvem', 'btn primary', async () => {
+    let local = []; try { local = JSON.parse(localStorage.getItem('bt-glyphs') || '[]'); } catch (e) {}
+    const docs = local.map(({ id, ...d }) => d);
+    const ok = await Store.addMany(docs);
+    if (ok === docs.length) { try { localStorage.removeItem('bt-glyphs'); } catch (e) {} toast(`${ok} letra(s) enviadas para a nuvem.`); }
+    closeModal();
+  }), button('Agora não', 'btn', () => closeModal()));
+  body.append(p, row); openModal('Letras deste navegador', body);
 }
 
 /* ---------- downloads ---------- */
@@ -173,7 +274,7 @@ function showTab(name) {
   }
   try { localStorage.setItem('bt-tab', name); } catch (e) {}
   if (name === 'acervo') renderGroups();
-  if (name === 'comparar') { fillSampleSelect(); if (S.cmp.results) drawOverlay(); }
+  if (name === 'comparar') { fillSampleSelect(); if (S.cmp.results) drawOverlay(); updateSaveHint(); }
   if (name === 'catalogo') renderCatalog();
   if (name === 'recorte') { drawSrc(); drawBin(); }
 }
@@ -378,7 +479,7 @@ function drawBin() {
     c.setLineDash([]);
     if (bb.label) { c.fillStyle = selC ? css('--amostra') : css('--muted'); c.fillText(bb.label, b.x0, b.y0 - 2 * k); }
   });
-  if (S.hover && !S.drawBox && labelHit(S.hover) < 0) {
+  if (S.hover && S.tool !== 'selecao' && !S.drawBox && labelHit(S.hover) < 0) {
     c.beginPath(); c.arc(S.hover.x, S.hover.y, brushProcR(), 0, Math.PI * 2);
     c.lineWidth = Math.max(1, 1.5 * k); c.strokeStyle = S.tool === 'borracha' ? css('--amostra') : css('--guide'); c.stroke();
   }
@@ -392,8 +493,9 @@ function drawBin() {
   cv.addEventListener('pointerdown', (e) => {
     if (!S.proc) return; cv.focus(); cv.setPointerCapture(e.pointerId);
     const p = evtPos(cv, e);
-    const lh = S.drawBox ? -1 : labelHit(p);
+    const lh = S.drawBox ? -1 : (S.tool === 'selecao' ? boxHit(p) : labelHit(p));
     if (lh >= 0) { S.sel = lh; drawBin(); return; }
+    if (S.tool === 'selecao' && !S.drawBox) return;
     if (!S.drawBox) {
       const sc = S.proc.sc;
       stroke = { erase: S.tool === 'borracha', r: brushProcR() / sc, pts: [[p.x / sc + S.roi.x, p.y / sc + S.roi.y]] };
@@ -404,6 +506,11 @@ function drawBin() {
   });
   cv.addEventListener('pointermove', (e) => {
     const p = evtPos(cv, e);
+    if (!S.drawBox && S.tool === 'selecao') {
+      const over = boxHit(p) >= 0;
+      cv.style.cursor = over ? 'pointer' : ''; cv.title = over ? 'Toque para selecionar esta letra e ajustar o vetor dela' : '';
+      return;
+    }
     if (!S.drawBox) {
       const lh = stroke ? -1 : labelHit(p);
       cv.style.cursor = lh >= 0 ? 'pointer' : ''; cv.title = lh >= 0 ? 'Toque para selecionar esta letra e ajustar o vetor dela' : '';
@@ -465,7 +572,14 @@ let binRAF = 0;
 function scheduleBin() { if (binRAF) return; binRAF = requestAnimationFrame(() => { binRAF = 0; drawBin(); }); }
 function updateInk() { const P = S.proc; let ink = 0; for (let i = 0; i < P.bin.length; i++) ink += P.bin[i]; $('binMeta').textContent = `${P.w}×${P.h}px · tinta ${fmt(ink / P.bin.length * 100)}%` + (S.edits.length ? ` · ${S.edits.length} retoque(s)` : ''); }
 function undoEdit() { if (!S.edits.length) return; S.edits.pop(); process(true); }
-// sempre há uma ferramenta ativa: Borracha (padrão) ou Pincel. Tocar no rótulo acima de uma letra seleciona a letra.
+// sempre há uma ferramenta ativa: Seleção (padrão), Borracha ou Pincel. Com Borracha ou Pincel, tocar no rótulo acima da letra ainda seleciona a letra.
+function boxHit(p) {
+  if (!S.proc) return -1;
+  let hit = labelHit(p), area = Infinity;
+  if (hit >= 0) return hit;
+  S.boxes.forEach((bb, i) => { const b = toProc(bb); if (p.x >= b.x0 - 1 && p.x <= b.x1 + 1 && p.y >= b.y0 - 1 && p.y <= b.y1 + 1) { const a = (b.x1 - b.x0) * (b.y1 - b.y0); if (a < area) { area = a; hit = i; } } });
+  return hit;
+}
 function labelHit(p) {
   if (!S.proc) return -1;
   const cv = $('cvBin'), k = S.proc.w / Math.max(1, cv.clientWidth || S.proc.w);
@@ -477,8 +591,9 @@ function labelHit(p) {
   return hit;
 }
 const TOOL_HINT = {
-  borracha: 'Pinte sobre o fundo para apagar o que não é letra. Para ajustar o vetor de uma letra, toque no rótulo acima dela. Ctrl/⌘ Z desfaz.',
-  pincel: 'Pinte para completar traços que o tratamento perdeu. Para ajustar o vetor de uma letra, toque no rótulo acima dela. Ctrl/⌘ Z desfaz.',
+  selecao: 'Toque numa letra para selecioná-la e ajustar o vetor dela. Use Borracha ou Pincel para retocar o recorte.',
+  borracha: 'Pinte sobre o fundo para apagar o que não é letra. Toque no rótulo acima de uma letra ou volte para Seleção para escolher uma letra. Ctrl/⌘ Z desfaz.',
+  pincel: 'Pinte para completar traços que o tratamento perdeu. Toque no rótulo acima de uma letra ou volte para Seleção para escolher uma letra. Ctrl/⌘ Z desfaz.',
 };
 function setTool(v) {
   S.tool = v; S.hover = null;
@@ -563,31 +678,96 @@ function updateLabeler() {
   $('selInfo').textContent = `Caixa ${S.sel + 1} de ${n}`;
   const m = currentMask(S.boxes[S.sel]);
   if (m) drawMask(cv, m, css('--ink'), 8);
-  $('saveHint').textContent = lab ? `${lab} glifo(s) prontos para salvar.` : 'Rotule pelo menos um caractere para salvar.';
+  updateSaveHint();
 }
 
-/* destino */
+/* salvar no acervo: fica na etapa de Identificação, depois que a família foi reconhecida */
+function updateSaveHint() {
+  const lab = S.boxes.filter(b => b.label).length;
+  const other = S.cmp.sample && S.cmp.sample !== TEMP_KEY;
+  $('saveMeta').textContent = S.proc ? `${lab} letra(s) rotulada(s) no recorte atual` : '';
+  $('saveHint').textContent = !S.proc ? 'Abra uma imagem e rotule as letras na etapa 1.'
+    : !lab ? 'Rotule pelo menos uma letra na etapa 1 para salvar.'
+    : other ? `O ranking acima é de “${S.cmp.sample}”, que já está no acervo. Salvar guarda as letras do recorte atual.`
+    : `${lab} letra(s) prontas para salvar.`;
+}
+let identTouched = false;
+$('fIdent').addEventListener('input', () => { identTouched = !!$('fIdent').value; });
+function suggestIdent() {
+  const r = S.cmp.results && S.cmp.results[S.cmp.row];
+  if (!identTouched && r && r.n && (!S.cmp.sample || S.cmp.sample === TEMP_KEY)) $('fIdent').value = r.group;
+  updateSaveHint();
+}
 seg('segDest', v => { S.dest = v; $('destBox').dataset.kind = v; $('destSample').hidden = v !== 'sample'; $('destRef').hidden = v !== 'ref'; });
+function labeledGlyphs() {
+  const out = [];
+  for (const b of S.boxes.filter(b => b.label)) {
+    const m = currentMask(b); if (!m) continue;
+    out.push({ label: b.label, mask: m, d: vecValid(b) ? b.vec.d : '' });
+  }
+  return out;
+}
 $('btnSave').addEventListener('click', async () => {
   if (!S.proc) { toast('Abra uma imagem primeiro.'); return; }
-  const labeled = S.boxes.filter(b => b.label);
-  if (!labeled.length) { toast('Rotule pelo menos um caractere.'); return; }
+  const list = labeledGlyphs();
+  if (!list.length) { toast('Rotule pelo menos um caractere.'); return; }
   const meta = S.dest === 'sample'
-    ? { kind: 'sample', artefact: $('fArt').value.trim(), typeNo: $('fTipo').value.trim() }
+    ? { kind: 'sample', artefact: $('fArt').value.trim(), typeNo: $('fTipo').value.trim(), identified: $('fIdent').value.trim() }
     : { kind: 'ref', catalog: $('fCat').value.trim(), family: $('fFam').value.trim(), style: $('fEst').value.trim(), source: 'scan' };
-  if (S.dest === 'sample' && (!meta.artefact || !meta.typeNo)) { toast('Preencha o artefato e o número do tipo.'); return; }
+  if (S.dest === 'sample' && (!meta.artefact || !meta.typeNo)) { toast('Preencha a capa e o número do tipo.'); return; }
   if (S.dest === 'ref' && (!meta.catalog || !meta.family)) { toast('Preencha o catálogo e a família.'); return; }
-  const docs = [];
-  for (const b of labeled) {
-    let m = currentMask(b); if (!m) continue;
-    m = Core.shrinkMask(m, 128);
-    docs.push({ ...meta, label: b.label, w: m.w, h: m.h, bits: Core.packMask(m), created: Date.now() });
-  }
+  const docs = list.map(g => {
+    const m = Core.shrinkMask(g.mask, 128);
+    const doc = { ...meta, label: g.label, w: m.w, h: m.h, bits: Core.packMask(m), created: Date.now() };
+    if (g.d && g.d.length < 60000) doc.d = g.d;
+    return doc;
+  });
   $('btnSave').disabled = true;
   const n = await Store.addMany(docs);
   $('btnSave').disabled = false;
-  if (n) toast(`${n} glifo(s) salvos em “${groupKey(meta)}”.`);
+  if (n) toast(`${n} letra(s) salvas em “${groupKey(meta)}”.`);
 });
+$('btnSvgAll').addEventListener('click', () => {
+  if (!S.proc) { toast('Abra uma imagem primeiro.'); return; }
+  const list = labeledGlyphs();
+  if (!list.length) { toast('Rotule pelo menos um caractere.'); return; }
+  const name = S.dest === 'sample' ? ($('fArt').value.trim() || 'recorte') : ($('fFam').value.trim() || 'referencia');
+  saveFile(`letras-${slug(name)}.svg`, glyphsSVG(list, name));
+});
+
+/* várias letras num SVG só: um grupo por letra (id = rótulo), rótulos numa camada à parte */
+function pathBBox(d) {
+  const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg'), p = document.createElementNS(ns, 'path');
+  svg.setAttribute('style', 'position:absolute;left:-9999px;width:0;height:0'); p.setAttribute('d', d); svg.append(p); document.body.append(svg);
+  let b; try { b = p.getBBox(); } catch (e) { b = null; } svg.remove();
+  return b && b.width ? b : null;
+}
+function glyphsSVG(list, title) {
+  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const cells = list.map(g => {
+    let body = '', vb = null;
+    if (g.d) { const b = pathBBox(g.d); if (b) { vb = [b.x, b.y, b.width, b.height]; body = `<path d="${g.d}"/>`; } }
+    if (!body) {
+      const m = g.mask, svg = traceSVG(m.data, m.w, m.h);
+      body = (svg.match(/<path[^>]*\/>/g) || []).join('').replace(/ fill="#000"/g, '');
+      vb = [0, 0, m.w, m.h];
+    }
+    // tamanho real em pixels do recorte: letras baixas continuam menores que as altas
+    return { label: g.label, body, vb, k: body.startsWith('<path d=') ? g.mask.h / vb[3] : 1, h: g.mask.h };
+  });
+  const H = Math.max(...cells.map(c => c.h)), gap = Math.round(H * 0.25), lab = Math.max(10, Math.round(H * 0.16));
+  let x = gap, out = '', labels = '';
+  cells.forEach((c, i) => {
+    const k = c.k, w = c.vb[2] * k, top = gap + (H - c.vb[3] * k);
+    out += `<g id="letra-${i + 1}" data-label="${esc(c.label)}" transform="translate(${(x - c.vb[0] * k).toFixed(2)} ${(top - c.vb[1] * k).toFixed(2)}) scale(${k.toFixed(4)})">${c.body}</g>`;
+    labels += `<text x="${(x + w / 2).toFixed(1)}" y="${(gap + H + lab * 1.4).toFixed(1)}" text-anchor="middle">${esc(c.label)}</text>`;
+    x += w + gap;
+  });
+  const W = Math.round(x), TH = Math.round(gap + H + lab * 2.2);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${TH}" width="${W}" height="${TH}"><title>${esc(title || 'FuntimoID')}</title>`
+    + `<g id="letras" fill="#000" fill-rule="evenodd">${out}</g>`
+    + `<g id="rotulos" fill="#8a7d6b" font-family="Host Grotesk, Arial, sans-serif" font-size="${lab}">${labels}</g></svg>`;
+}
 
 /* =================================================================
    desenho de máscaras e vetorização
@@ -1018,6 +1198,7 @@ function groupCard(g) {
   hd.append(kind, h, meta);
   const acts = document.createElement('div'); acts.className = 'acts';
   acts.append(button('Exportar tabela PNG', 'btn small', () => exportTable(g)));
+  acts.append(button('Exportar vetores (SVG)', 'btn small', () => saveFile(`letras-${slug(g.key)}.svg`, glyphsSVG(g.items.map(it => ({ label: it.label, mask: maskOf(it), d: it.d || '' })), g.key))));
   if (g.kind === 'sample') acts.append(button('Identificar', 'btn small', () => { showTab('comparar'); $('selSample').value = g.key; runRank(); }));
   if (!g.temp && !g.builtin) acts.append(armedDelete('Excluir grupo', () => Store.remove(g.items.map(i => i.id))));
   const body = document.createElement('div'); body.className = 'body';
@@ -1224,6 +1405,7 @@ async function runRank() {
 function renderRank() {
   const tb = $('rankTable').tBodies[0]; tb.innerHTML = '';
   const R = S.cmp.results || [];
+  { const dl = $('dlFamAll'); dl.innerHTML = ''; [...new Set(R.map(r => r.group))].sort((x, y) => x.localeCompare(y, 'pt-BR')).forEach(v => { const o = document.createElement('option'); o.value = v; dl.append(o); }); }
   R.forEach((r, i) => {
     const tr = document.createElement('tr'); tr.tabIndex = 0; tr.setAttribute('aria-selected', String(i === S.cmp.row));
     const widthPct = (r.aspect - 1) * 100;
@@ -1247,6 +1429,7 @@ function renderRank() {
 }
 function selectRow(i) {
   S.cmp.row = i;
+  suggestIdent();
   [...$('rankTable').tBodies[0].rows].forEach((tr, k) => tr.setAttribute('aria-selected', String(k === i)));
   const r = S.cmp.results && S.cmp.results[i];
   $('detailPanel').hidden = !r || !r.n;

@@ -422,3 +422,11 @@ kbd { font: inherit; font-size: 0.75rem; padding: 0 5px; border-radius: 4px; bor
   body::after { display: none; }
   .top { background: var(--bg); }
 }
+
+.solo > .panel .labeler { max-width: 640px; }
+.save-grid > .side { max-width: 680px; }
+.save-grid .dest .row label { min-width: 9.5em; }
+.cloud-slot { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px dashed var(--rule); border-radius: 12px; }
+.cloud-slot[hidden] { display: none; }
+.cloud-slot .hint { margin: 0; }
+.cloud-bar { margin-bottom: 16px; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; }
