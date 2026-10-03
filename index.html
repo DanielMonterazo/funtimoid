@@ -11,8 +11,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Rokkitt:wght@100..900&display=swap">
-<link rel="stylesheet" href="src/base.css">
-<link rel="stylesheet" href="src/soft.css">
+<link rel="stylesheet" href="src/base.css?v=20261003">
+<link rel="stylesheet" href="src/soft.css?v=20261003">
 </head>
 <body>
 <a class="skip" href="#main">Pular para o conteúdo</a>
@@ -44,7 +44,7 @@
           <header><h2>Imagem</h2><span class="meta" id="srcMeta">—</span></header>
           <div class="tools" role="toolbar" aria-label="Ferramentas da imagem">
             <div class="row zoomrow"><label for="rgZoomSrc">Zoom</label><input type="range" id="rgZoomSrc" min="50" max="400" step="10" value="100"><output id="oZoomSrc">100%</output></div>
-            <button class="btn small" id="btnFitSrc" type="button">Ajustar à largura</button>
+            <button class="btn small" id="btnFitSrc" type="button" disabled>Voltar a 100%</button>
             <span class="hint">Arraste sobre a imagem para escolher a área do texto. O zoom vale também para o recorte tratado.</span>
           </div>
           <div class="viewer" id="srcViewer">
@@ -84,7 +84,7 @@
             <div class="group">
               <div class="gl">Ampliação</div>
               <div class="row"><label for="rgZoom">Zoom</label><input type="range" id="rgZoom" min="50" max="400" step="10" value="100"><output id="oZoom">100%</output></div>
-              <div class="row"><button class="btn small" id="btnFit" type="button">Ajustar à largura</button></div>
+              <div class="row"><button class="btn small" id="btnFit" type="button" disabled>Voltar a 100%</button></div>
               <p class="hint">O mesmo zoom do card Imagem: mudar aqui ou lá amplia as duas vistas juntas. Acima de 100% aparece rolagem lateral. Também funciona com <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + rolagem do mouse.</p>
               <div class="row"><label>Resolução</label>
                 <div class="seg" id="segUp" role="group" aria-label="Resolução do tratamento">
@@ -321,10 +321,10 @@
   </div>
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
-<script src="src/paper-core.min.js"></script>
-<script src="src/imagetracer.min.js"></script>
-<script src="src/core.js"></script>
-<script src="src/app.js"></script>
-<script src="src/soft.js"></script>
+<script src="src/paper-core.min.js?v=20261003"></script>
+<script src="src/imagetracer.min.js?v=20261003"></script>
+<script src="src/core.js?v=20261003"></script>
+<script src="src/app.js?v=20261003"></script>
+<script src="src/soft.js?v=20261003"></script>
 </body>
 </html>
