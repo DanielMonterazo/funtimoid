@@ -53,7 +53,7 @@ const S = {
   img: null, disp: null, dispScale: 1,
   roi: null,
   p: { up: 1, mode: 'lum', ink: [200, 40, 90], pol: 'auto', method: 'multi', win: 60, k: 0.25, thr: 128, close: 0, min: 4, vl: 0, hl: 0, levels: 4 },
-  tool: 'caixas', brush: 16, edits: [], hover: null,
+  tool: 'borracha', brush: 16, edits: [], hover: null,
   proc: null,
   boxes: [], sel: -1,
   picking: false,
@@ -378,7 +378,7 @@ function drawBin() {
     c.setLineDash([]);
     if (bb.label) { c.fillStyle = selC ? css('--amostra') : css('--muted'); c.fillText(bb.label, b.x0, b.y0 - 2 * k); }
   });
-  if (S.hover && S.tool !== 'caixas') {
+  if (S.hover && !S.drawBox && labelHit(S.hover) < 0) {
     c.beginPath(); c.arc(S.hover.x, S.hover.y, brushProcR(), 0, Math.PI * 2);
     c.lineWidth = Math.max(1, 1.5 * k); c.strokeStyle = S.tool === 'borracha' ? css('--amostra') : css('--guide'); c.stroke();
   }
@@ -392,30 +392,26 @@ function drawBin() {
   cv.addEventListener('pointerdown', (e) => {
     if (!S.proc) return; cv.focus(); cv.setPointerCapture(e.pointerId);
     const p = evtPos(cv, e);
-    if (S.tool !== 'caixas') {
+    const lh = S.drawBox ? -1 : labelHit(p);
+    if (lh >= 0) { S.sel = lh; drawBin(); return; }
+    if (!S.drawBox) {
       const sc = S.proc.sc;
       stroke = { erase: S.tool === 'borracha', r: brushProcR() / sc, pts: [[p.x / sc + S.roi.x, p.y / sc + S.roi.y]] };
       S.edits.push(stroke); paintStroke(S.proc.bin, S.proc.w, S.proc.h, stroke, S.roi, sc, stroke.pts.length - 1); scheduleBin();
       return;
     }
-    let hit = -1, area = Infinity;
-    S.boxes.forEach((bb, i) => { const b = toProc(bb); if (p.x >= b.x0 - 1 && p.x <= b.x1 + 1 && p.y >= b.y0 - 1 && p.y <= b.y1 + 1) { const a = (b.x1 - b.x0) * (b.y1 - b.y0); if (a < area) { area = a; hit = i; } } });
-    if (hit >= 0 && !S.drawBox) { S.sel = hit; drawBin(); start = null; return; }
-    start = S.drawBox ? p : null;
+    start = p;
   });
   cv.addEventListener('pointermove', (e) => {
     const p = evtPos(cv, e);
-    if (S.tool !== 'caixas') {
+    if (!S.drawBox) {
+      const lh = stroke ? -1 : labelHit(p);
+      cv.style.cursor = lh >= 0 ? 'pointer' : ''; cv.title = lh >= 0 ? 'Toque para selecionar esta letra e ajustar o vetor dela' : '';
       S.hover = p;
       if (stroke) { const sc = S.proc.sc; stroke.pts.push([p.x / sc + S.roi.x, p.y / sc + S.roi.y]); paintStroke(S.proc.bin, S.proc.w, S.proc.h, stroke, S.roi, sc, stroke.pts.length - 2); }
       scheduleBin(); return;
     }
-    if (!start) {
-      const over = S.boxes.some((bb) => { const b = toProc(bb); return p.x >= b.x0 - 1 && p.x <= b.x1 + 1 && p.y >= b.y0 - 1 && p.y <= b.y1 + 1; });
-      if (S.drawBox) { cv.style.cursor = ''; cv.title = ''; return; }
-      cv.style.cursor = over ? 'pointer' : ''; cv.title = over ? 'Toque para selecionar e ajustar o vetor desta letra' : '';
-      return;
-    }
+    if (!start) { cv.style.cursor = ''; cv.title = ''; return; }
     tempBox = { x0: Math.min(start.x, p.x), y0: Math.min(start.y, p.y), x1: Math.max(start.x, p.x), y1: Math.max(start.y, p.y) };
     drawBin();
   });
@@ -427,11 +423,6 @@ function drawBin() {
       S.boxes.push(nb); reorder(nb); armDrawBox(false);
     }
     start = null; tempBox = null; drawBin();
-  });
-  cv.addEventListener('dblclick', (e) => {
-    if (!S.proc || S.tool !== 'caixas' || S.sel < 0) return;
-    const p = evtPos(cv, e), b = toProc(S.boxes[S.sel]);
-    if (p.x >= b.x0 - 2 && p.x <= b.x1 + 2 && p.y >= b.y0 - 2 && p.y <= b.y1 + 2) openVecEditor(S.sel);
   });
   cv.addEventListener('keydown', (e) => {
     if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel >= 0) { e.preventDefault(); delBox(); }
@@ -474,25 +465,36 @@ let binRAF = 0;
 function scheduleBin() { if (binRAF) return; binRAF = requestAnimationFrame(() => { binRAF = 0; drawBin(); }); }
 function updateInk() { const P = S.proc; let ink = 0; for (let i = 0; i < P.bin.length; i++) ink += P.bin[i]; $('binMeta').textContent = `${P.w}×${P.h}px · tinta ${fmt(ink / P.bin.length * 100)}%` + (S.edits.length ? ` · ${S.edits.length} retoque(s)` : ''); }
 function undoEdit() { if (!S.edits.length) return; S.edits.pop(); process(true); }
-// Borracha e Pincel ligam e desligam; sem nenhum ativo, tocar numa letra seleciona e mostra o atalho do vetor
+// sempre há uma ferramenta ativa: Borracha (padrão) ou Pincel. Tocar no rótulo acima de uma letra seleciona a letra.
+function labelHit(p) {
+  if (!S.proc) return -1;
+  const cv = $('cvBin'), k = S.proc.w / Math.max(1, cv.clientWidth || S.proc.w);
+  let hit = -1;
+  S.boxes.forEach((bb, i) => {
+    const b = toProc(bb);
+    if (p.x >= b.x0 - 3 * k && p.x <= Math.max(b.x1, b.x0 + 16 * k) && p.y >= b.y0 - 18 * k && p.y < b.y0 - 1) hit = i;
+  });
+  return hit;
+}
+const TOOL_HINT = {
+  borracha: 'Pinte sobre o fundo para apagar o que não é letra. Para ajustar o vetor de uma letra, toque no rótulo acima dela. Ctrl/⌘ Z desfaz.',
+  pincel: 'Pinte para completar traços que o tratamento perdeu. Para ajustar o vetor de uma letra, toque no rótulo acima dela. Ctrl/⌘ Z desfaz.',
+};
 function setTool(v) {
   S.tool = v; S.hover = null;
-  if (v !== 'caixas') armDrawBox(false, true);
-  $('cvBin').dataset.tool = S.drawBox ? 'desenhar' : v;
-  $('segTool').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.v === v)));
-  $('toolHint').textContent = v === 'borracha' ? 'Pinte sobre o fundo para apagar o que não é letra. Toque de novo em Borracha para sair. Ctrl/⌘ Z desfaz.'
-    : v === 'pincel' ? 'Pinte para completar traços que o tratamento perdeu. Toque de novo em Pincel para sair. Ctrl/⌘ Z desfaz.'
-    : 'Escolha Borracha ou Pincel para retocar. Sem ferramenta ativa, toque numa letra para ajustar o vetor dela.';
+  armDrawBox(false, true);
+  $('cvBin').dataset.tool = v;
+  setSeg('segTool', v);
+  $('toolHint').textContent = TOOL_HINT[v];
   drawBin();
 }
-$('segTool').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; setTool(S.tool === b.dataset.v ? 'caixas' : b.dataset.v); });
+$('segTool').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) setTool(b.dataset.v); });
 function armDrawBox(on, silent) {
   S.drawBox = !!on; const b = $('btnDrawBox');
   b.setAttribute('aria-pressed', String(S.drawBox)); b.classList.toggle('armed', S.drawBox);
   b.textContent = S.drawBox ? 'Arraste no recorte tratado…' : '+ Desenhar caixa';
   if (silent) return;
-  if (S.drawBox && S.tool !== 'caixas') setTool('caixas');
-  $('cvBin').dataset.tool = S.drawBox ? 'desenhar' : S.tool;
+  S.hover = null; $('cvBin').dataset.tool = S.drawBox ? 'desenhar' : S.tool; scheduleBin();
   if (S.drawBox) { $('binViewer').scrollIntoView({ block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' }); toast('Arraste em volta da letra no recorte tratado. Esc cancela.'); }
 }
 $('btnDrawBox').addEventListener('click', () => armDrawBox(!S.drawBox));
@@ -1559,7 +1561,7 @@ $('binViewer').addEventListener('scroll', () => updateFab(), { passive: true });
 function updateFab() {
   const fab = $('vecFab'), cv = $('cvBin');
   if (!fab) return;
-  if (!S.proc || S.tool !== 'caixas' || S.sel < 0 || !S.boxes[S.sel]) { fab.hidden = true; return; }
+  if (!S.proc || S.drawBox || S.sel < 0 || !S.boxes[S.sel]) { fab.hidden = true; return; }
   const bb = S.boxes[S.sel], b = toProc(bb), k = cv.clientWidth / cv.width;
   fab.textContent = `✎ Ajustar vetor${bb.label ? ' do “' + bb.label + '”' : ''}`;
   fab.hidden = false;
