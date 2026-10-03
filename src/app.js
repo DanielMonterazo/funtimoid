@@ -248,7 +248,8 @@ const canvasBlob = (cv) => new Promise(r => cv.toBlob(r, 'image/png'));
 /* ---------- abas ---------- */
 document.querySelectorAll('.steps button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
 $('homeLink').addEventListener('click', (e) => { e.preventDefault(); showTab('recorte'); window.scrollTo({ top: 0, behavior: 'smooth' }); });
-const TAB_ORDER = ['recorte', 'comparar', 'catalogo', 'acervo'];
+const TAB_ORDER = ['recorte', 'comparar', 'catalogo', 'acervo', 'sobre'];
+$('aboutBtn').addEventListener('click', () => { showTab('sobre'); window.scrollTo({ top: 0, behavior: reduceMotion() ? 'auto' : 'smooth' }); });
 let curTab = null;
 const pillEl = document.querySelector('.steps .pill');
 const pill = { x: springValue(0, v => pillEl.style.setProperty('--x', v)), y: springValue(0, v => pillEl.style.setProperty('--y', v)),
@@ -264,6 +265,7 @@ document.fonts && document.fonts.ready.then(() => placePill(true));
 function showTab(name) {
   const prev = curTab; curTab = name;
   document.querySelectorAll('.steps button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+  document.querySelector('.steps').classList.toggle('none', name === 'sobre'); $('aboutBtn').setAttribute('aria-pressed', String(name === 'sobre'));
   placePill(prev === null);
   document.querySelectorAll('.tab').forEach(t => t.hidden = t.id !== 'tab-' + name);
   if (prev && prev !== name) {
@@ -2044,7 +2046,7 @@ window.addEventListener('resize', placePop);
 async function init() {
   $('inkSwatch').style.background = `rgb(${S.p.ink.join(',')})`;
   let tab = 'recorte'; try { tab = localStorage.getItem('bt-tab') || 'recorte'; } catch (e) {}
-  showTab(['recorte', 'comparar', 'catalogo', 'acervo'].includes(tab) ? tab : 'recorte');
+  showTab(TAB_ORDER.includes(tab) ? tab : 'recorte');
   Store.init();
   const [okCat, okEx] = await Promise.all([loadCatalog(), loadExample()]);
   if (!okEx && !S.img) $('srcViewer').insertAdjacentHTML('afterbegin', '<div class="empty" id="srcEmpty">Abra a foto de uma capa ou de um impresso para começar.</div>');
