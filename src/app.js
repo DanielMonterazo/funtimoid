@@ -229,7 +229,7 @@ $('btnFull').addEventListener('click', () => { if (!S.img) return; S.roi = { x: 
 
 function drawSrc() {
   const cv = $('cvSrc'); if (!S.disp) return;
-  cv.width = S.disp.width; cv.height = S.disp.height;
+  cv.width = S.disp.width; cv.height = S.disp.height; zoomCanvas(cv);
   const c = cv.getContext('2d'); c.drawImage(S.disp, 0, 0);
   if (S.roi) {
     const k = S.dispScale, r = S.roi;
@@ -352,7 +352,7 @@ let tempBox = null;
 function drawBin() {
   const cv = $('cvBin'); const P = S.proc;
   if (!P) return;
-  cv.width = P.w; cv.height = P.h;
+  cv.width = P.w; cv.height = P.h; zoomCanvas(cv);
   const c = cv.getContext('2d');
   const id = c.createImageData(P.w, P.h);
   const ink = hexToRgb(css('--ink')), paper = hexToRgb(css('--sheet'));
@@ -389,6 +389,7 @@ function drawBin() {
   }
   if (tempBox) { c.setLineDash([4 * k, 3 * k]); c.strokeStyle = css('--amostra'); c.strokeRect(tempBox.x0, tempBox.y0, tempBox.x1 - tempBox.x0, tempBox.y1 - tempBox.y0); c.setLineDash([]); }
   updateLabeler();
+  updateFab();
 }
 (function binPointer() {
   const cv = $('cvBin'); let start = null;
@@ -414,7 +415,11 @@ function drawBin() {
       if (stroke) { const sc = S.proc.sc; stroke.pts.push([p.x / sc + S.roi.x, p.y / sc + S.roi.y]); paintStroke(S.proc.bin, S.proc.w, S.proc.h, stroke, S.roi, sc, stroke.pts.length - 2); }
       scheduleBin(); return;
     }
-    if (!start) return;
+    if (!start) {
+      const over = S.boxes.some((bb) => { const b = toProc(bb); return p.x >= b.x0 - 1 && p.x <= b.x1 + 1 && p.y >= b.y0 - 1 && p.y <= b.y1 + 1; });
+      cv.style.cursor = over ? 'pointer' : ''; cv.title = over ? 'Clique para selecionar · duplo clique para ajustar o vetor' : '';
+      return;
+    }
     tempBox = { x0: Math.min(start.x, p.x), y0: Math.min(start.y, p.y), x1: Math.max(start.x, p.x), y1: Math.max(start.y, p.y) };
     drawBin();
   });
@@ -475,7 +480,7 @@ function updateInk() { const P = S.proc; let ink = 0; for (let i = 0; i < P.bin.
 function undoEdit() { if (!S.edits.length) return; S.edits.pop(); process(true); }
 seg('segTool', v => {
   S.tool = v; $('cvBin').dataset.tool = v; S.hover = null;
-  $('toolHint').textContent = v === 'caixas' ? 'Clique numa caixa para selecionar; arraste numa área vazia para desenhar uma caixa.'
+  $('toolHint').textContent = v === 'caixas' ? 'Clique numa letra para selecionar; depois use ✎ Ajustar vetor (ou duplo clique) para corrigir o desenho dela. Arraste numa área vazia para desenhar uma caixa.'
     : v === 'borracha' ? 'Pinte sobre o fundo para apagar o que não é letra. Ctrl/⌘ Z desfaz.' : 'Pinte para completar traços que o tratamento perdeu. Ctrl/⌘ Z desfaz.';
   drawBin();
 });
@@ -1501,6 +1506,90 @@ async function loadExample() {
     return S.boxes.length === chars.length;
   } catch (e) { return false; }
 }
+
+
+/* =================================================================
+   ZOOM DAS IMAGENS, ATALHO DO EDITOR DE VETOR E AJUDA DAS MÉTRICAS
+   ================================================================= */
+S.zoom = 100;
+function zoomCanvas(cv) {
+  const vw = cv.parentElement; if (!vw || !cv.width) return;
+  const z = (S.zoom || 100) / 100, maxH = window.innerHeight * 0.58;
+  const fitW = Math.max(40, Math.min(vw.clientWidth, cv.width * (maxH / cv.height)));
+  cv.style.maxWidth = 'none'; cv.style.maxHeight = 'none'; cv.style.height = 'auto';
+  cv.style.width = Math.round(fitW * z) + 'px';
+}
+function setZoom(v) {
+  const nv = Math.max(50, Math.min(400, Math.round(v / 10) * 10));
+  const views = ['srcViewer', 'binViewer'].map($);
+  const rel = views.map(vw => ({ x: (vw.scrollLeft + vw.clientWidth / 2) / Math.max(1, vw.scrollWidth), y: (vw.scrollTop + vw.clientHeight / 2) / Math.max(1, vw.scrollHeight) }));
+  S.zoom = nv; $('rgZoom').value = nv; $('oZoom').textContent = nv + '%';
+  zoomCanvas($('cvSrc')); drawBin();
+  // mantém o mesmo ponto no centro da vista ao ampliar ou reduzir
+  views.forEach((vw, i) => { vw.scrollLeft = rel[i].x * vw.scrollWidth - vw.clientWidth / 2; vw.scrollTop = rel[i].y * vw.scrollHeight - vw.clientHeight / 2; });
+}
+$('rgZoom').addEventListener('input', (e) => setZoom(+e.target.value));
+$('btnFit').addEventListener('click', () => setZoom(100));
+['srcViewer', 'binViewer'].forEach(id => $(id).addEventListener('wheel', (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); setZoom(S.zoom + (e.deltaY < 0 ? 10 : -10));
+}, { passive: false }));
+window.addEventListener('resize', () => { zoomCanvas($('cvSrc')); });
+$('binViewer').addEventListener('scroll', () => updateFab(), { passive: true });
+
+// atalho visível para o editor de vetor, preso à letra selecionada
+function updateFab() {
+  const fab = $('vecFab'), cv = $('cvBin');
+  if (!fab) return;
+  if (!S.proc || S.tool !== 'caixas' || S.sel < 0 || !S.boxes[S.sel]) { fab.hidden = true; return; }
+  const bb = S.boxes[S.sel], b = toProc(bb), k = cv.clientWidth / cv.width;
+  fab.textContent = `✎ Ajustar vetor${bb.label ? ' do “' + bb.label + '”' : ''}`;
+  fab.hidden = false;
+  const fw = fab.offsetWidth || 120, fh = fab.offsetHeight || 28;
+  let left = cv.offsetLeft + (b.x1 + 1) * k - fw, top = cv.offsetTop + b.y0 * k - fh - 6;
+  if (top < 4) top = 4;
+  left = Math.max(4, Math.min(left, cv.offsetLeft + cv.clientWidth - fw - 4));
+  fab.style.left = left + 'px'; fab.style.top = top + 'px';
+}
+$('vecFab').addEventListener('click', () => openVecEditor(S.sel));
+
+// ajuda das métricas: um "?" ao lado de cada nome abre a definição
+const HELP = {
+  score: ['Similaridade', 'Nota de 0 a 100 que resume quão parecida a amostra é da família. Junta o IoU (55%) e o Chamfer (45%). Quanto maior, mais parecida. Serve para ordenar candidatos; a confirmação é a sua leitura.'],
+  iou: ['IoU · interseção sobre união', 'Quanto as áreas pintadas das duas letras coincidem quando sobrepostas: a área em comum dividida pela área ocupada pelas duas juntas. Vai de 0 (nada em comum) a 1 (idênticas). Na sobreposição, é o violeta em relação ao total.'],
+  chamfer: ['Chamfer', 'Distância média entre os contornos das duas letras, em % da altura da letra. Diz se o desenho como um todo (curvas, ângulos, serifas) bate. Quanto menor, melhor: 1% numa letra de 100 px é cerca de 1 px de diferença.'],
+  hd95: ['HD95 · Hausdorff 95%', 'O maior afastamento entre os contornos, ignorando os 5% de pontos mais distantes para não contar manchas e falhas. Em % da altura. Aponta diferenças localizadas, como um terminal cortado de outro jeito. Quanto menor, melhor.'],
+  largura: ['Largura', 'Com a altura igualada, quanto a amostra é mais larga (+) ou mais estreita (−) que a referência. Ajuda a separar estilos Normal, Larga e Estreita.'],
+  peso: ['Peso', 'Quanto o traço da amostra é mais grosso (+) ou mais fino (−) que o da referência. Ajuda a separar Clara, Meia Preta e Preta. O ganho de tinta da impressão costuma puxar para +.'],
+  letras: ['Letras', 'Quantas letras diferentes da amostra a família também tem no catálogo (comparadas / total). Com poucas letras em comum a nota fica menos confiável e aparece um ● de aviso.'],
+};
+const pop = document.createElement('div'); pop.className = 'pop'; pop.id = 'helpPop'; pop.setAttribute('role', 'dialog'); pop.hidden = true;
+document.body.append(pop);
+let popBtn = null;
+function closePop() { if (!popBtn) return; popBtn.setAttribute('aria-expanded', 'false'); popBtn = null; pop.hidden = true; }
+function placePop() {
+  if (!popBtn) return;
+  const r = popBtn.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+  const left = Math.min(Math.max(12, r.left + r.width / 2 - pw / 2), window.innerWidth - pw - 12);
+  let top = r.bottom + 8; if (top + ph > window.innerHeight - 12) top = Math.max(12, r.top - ph - 8);
+  pop.style.left = left + 'px'; pop.style.top = top + 'px';
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('.qi');
+  if (b) {
+    e.preventDefault(); e.stopPropagation();
+    if (popBtn === b) { closePop(); return; }
+    closePop();
+    const [t, d] = HELP[b.dataset.help] || ['', ''];
+    pop.innerHTML = ''; const h = document.createElement('b'); h.textContent = t; const p = document.createElement('p'); p.textContent = d; pop.append(h, p);
+    popBtn = b; b.setAttribute('aria-expanded', 'true'); pop.hidden = false; placePop();
+    if (!reduceMotion()) pop.animate([{ opacity: 0, transform: 'translateY(-4px) scale(0.98)' }, { opacity: 1, transform: 'none' }], { duration: 180, easing: EASE });
+    return;
+  }
+  if (popBtn && !pop.contains(e.target)) closePop();
+}, true);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && popBtn) { e.stopImmediatePropagation(); const b = popBtn; closePop(); b.focus(); } }, true);
+window.addEventListener('scroll', placePop, { passive: true, capture: true });
+window.addEventListener('resize', placePop);
 
 async function init() {
   $('inkSwatch').style.background = `rgb(${S.p.ink.join(',')})`;
