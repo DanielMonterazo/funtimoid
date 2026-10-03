@@ -45,7 +45,7 @@
           <div class="tools" role="toolbar" aria-label="Ferramentas da imagem">
             <div class="row zoomrow"><label for="rgZoomSrc">Zoom</label><input type="range" id="rgZoomSrc" min="50" max="400" step="10" value="100"><output id="oZoomSrc">100%</output></div>
             <button class="btn small" id="btnFitSrc" type="button">Ajustar à largura</button>
-            <span class="hint">Arraste sobre a imagem para escolher a área do texto. Acima de 100% aparece rolagem lateral.</span>
+            <span class="hint">Arraste sobre a imagem para escolher a área do texto. O zoom vale também para o recorte tratado.</span>
           </div>
           <div class="viewer" id="srcViewer">
             <canvas id="cvSrc" width="10" height="10" aria-label="Imagem original. Arraste para selecionar a área."></canvas>
@@ -85,7 +85,7 @@
               <div class="gl">Ampliação</div>
               <div class="row"><label for="rgZoom">Zoom</label><input type="range" id="rgZoom" min="50" max="400" step="10" value="100"><output id="oZoom">100%</output></div>
               <div class="row"><button class="btn small" id="btnFit" type="button">Ajustar à largura</button></div>
-              <p class="hint">Amplia ou reduz o recorte tratado e o vetor. Acima de 100% aparece rolagem lateral. Também funciona com <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + rolagem do mouse sobre o recorte.</p>
+              <p class="hint">O mesmo zoom do card Imagem: mudar aqui ou lá amplia as duas vistas juntas. Acima de 100% aparece rolagem lateral. Também funciona com <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + rolagem do mouse.</p>
               <div class="row"><label>Resolução</label>
                 <div class="seg" id="segUp" role="group" aria-label="Resolução do tratamento">
                   <button data-v="1" aria-pressed="true">1×</button><button data-v="2" aria-pressed="false">2×</button><button data-v="4" aria-pressed="false">4×</button>
