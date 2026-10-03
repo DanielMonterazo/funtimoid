@@ -11,8 +11,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Rokkitt:wght@100..900&display=swap">
-<link rel="stylesheet" href="src/base.css?v=20261003e">
-<link rel="stylesheet" href="src/soft.css?v=20261003e">
+<link rel="stylesheet" href="src/base.css?v=20261003f">
+<link rel="stylesheet" href="src/soft.css?v=20261003f">
 </head>
 <body>
 <a class="skip" href="#main">Pular para o conteúdo</a>
@@ -27,6 +27,7 @@
       <button role="tab" id="t-acervo" aria-selected="false" data-tab="acervo"><span class="n">4</span><span><span class="x">Meu acervo</span><span class="sx">Acervo</span></span></button>
     </nav>
     <span class="store-pill" id="storePill">Conectando ao acervo…</span>
+    <button class="about-btn" id="aboutBtn" type="button" aria-pressed="false">Sobre</button>
     <button class="theme-btn" id="themeBtn" type="button" aria-label="Mudar para o modo escuro" title="Modo escuro">
       <svg class="ic-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><g stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g></svg>
       <svg class="ic-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.6A8.3 8.3 0 0 1 9.4 4a8.3 8.3 0 1 0 10.6 10.6Z"/></svg>
@@ -327,6 +328,67 @@
       </div>
     </div>
   </section>
+  <!-- SOBRE -->
+  <section class="tab" id="tab-sobre" role="tabpanel" aria-label="Sobre o FuntimoID" hidden>
+    <header class="mast"><span class="mast-eyebrow" data-n="i">Sobre</span><h2 class="mast-t">Sobre o FuntimoID</h2></header>
+    <p class="intro">O FuntimoID ajuda a descobrir <strong>qual tipo da Funtimod</strong> foi usado num impresso: capas de disco, cartazes, rótulos, revistas. A Funtimod foi a maior fundição de tipos brasileira do século XX, e boa parte da tipografia impressa no país passou pelos seus tipos de metal. O site compara as letras de uma foto com as páginas de amostra dos catálogos da fundição e mostra quais famílias combinam melhor.</p>
+    <div class="about">
+      <div class="panel about-main">
+        <header><h2>De onde vem</h2></header>
+        <div class="body prose">
+          <p>O site nasceu do artigo <cite>Identificação de tipos em dois discos de vinil da fábrica Rozenblit das décadas de 1960 e 1970</cite>, de Daniel de M. Monterazo, Yasmin Enes do A. Lima e Isabella Ribeiro Aragão, feito na disciplina de História da Tipografia do Bacharelado em Design da UFPE. A pesquisa identificou os tipos das capas de <em>Alegria! Alegria!</em> (Biriba Boys, 1967) e <em>Uma noite no Kartier</em> (Maestro Guimarães, 1978), do acervo fonográfico do Memorial Denis Bernardes da UFPE, e mostrou que todos vinham de quatro famílias da Funtimod.</p>
+          <p>O artigo seguiu um método de identificação em seis etapas, baseado em Soares et al. (2016) e Aragão et al. (2021). O FuntimoID transforma essas etapas em ferramentas:</p>
+          <ol class="about-steps">
+            <li><b>Quantificação e agrupamento.</b> Separar os desenhos diferentes que aparecem no artefato. <span>No site: escolher a área do texto e separar a tinta do fundo, na etapa 1.</span></li>
+            <li><b>Organização.</b> Recortar cada caractere e montar tabelas alfabéticas, como no projeto Tipografia Paulistana (Farias, 2019). <span>No site: detecção e reconhecimento das letras, e as tabelas do Meu acervo.</span></li>
+            <li><b>Vetorização.</b> Redesenhar letras com pouca legibilidade para ver melhor a anatomia. <span>No site: o editor de vetor com caneta, que corrige cada letra antes da comparação.</span></li>
+            <li><b>Comparação por fisionomia.</b> Comparar a anatomia das letras com os catálogos de fundições. <span>No site: o ranking de famílias contra os catálogos 06 e 07 da Funtimod.</span></li>
+            <li><b>Comparação por sobreposição digital.</b> Sobrepor a letra do artefato à candidata com 50% de opacidade, como propõe Aragão (2016). <span>No site: a Sobreposição, com cores, opacidade e mapa de distância.</span></li>
+            <li><b>Comparação por sobreposição física.</b> Conferir o original contra páginas de catálogo impressas em acetato. <span>Fora do site: continua sendo a confirmação final.</span></li>
+          </ol>
+          <p>O ranking indica por onde começar a busca. A identificação continua sendo uma leitura do pesquisador, apoiada no olhar sobre a anatomia das letras e, sempre que possível, no confronto com o original.</p>
+        </div>
+      </div>
+      <aside class="about-side">
+        <div class="panel">
+          <header><h2>Os catálogos</h2></header>
+          <div class="body prose">
+            <p>A base de comparação são os <b>catálogos 06 e 07 da Funtimod S.A.</b>: 59 famílias com glifos extraídos, cerca de 9.600 letras recortadas das páginas de amostra. Eles podem ser consultados na aba <b>Catálogo Funtimod</b>.</p>
+            <p>As capas estudadas no artigo estão no <a href="https://www.flickr.com/photos/mdbufpe/albums/72157668246526467" target="_blank" rel="noopener">álbum do Memorial Denis Bernardes no Flickr</a>.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <header><h2>Créditos</h2></header>
+          <div class="body prose">
+            <p>Pesquisa: Daniel de M. Monterazo, Yasmin Enes do A. Lima e Isabella Ribeiro Aragão (orientação), UFPE.</p>
+            <p>Bibliotecas: <a href="http://paperjs.org" target="_blank" rel="noopener">Paper.js</a> (MIT) no editor de vetor e <a href="https://github.com/jankovicsandras/imagetracerjs" target="_blank" rel="noopener">imagetracer.js</a> (domínio público) na vetorização. Tipografia: Rokkitt e Host Grotesk (SIL Open Font License).</p>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <div class="panel mt">
+      <header><h2>Referências</h2></header>
+      <div class="body prose refs-list">
+        <h3>Artigo de origem</h3>
+        <ol class="refs">
+          <li>MONTERAZO, Daniel de M.; LIMA, Yasmin Enes do A.; ARAGÃO, Isabella Ribeiro. <cite>Identificação de tipos em dois discos de vinil da fábrica Rozenblit das décadas de 1960 e 1970</cite>. Recife: Universidade Federal de Pernambuco, Bacharelado em Design.</li>
+        </ol>
+        <h3>Isabella Aragão e a Funtimod</h3>
+        <ol class="refs">
+          <li class="key">ARAGÃO, Isabella R. <cite>Tipos móveis de metal da Funtimod: contribuições para a história tipográfica brasileira</cite>. Tese (Doutorado em Design e Arquitetura) — Faculdade de Arquitetura e Urbanismo, Universidade de São Paulo, São Paulo, 2016. <span>Origem do método de comparação por sobreposição.</span></li>
+          <li class="key">ARAGÃO, Isabella; FARIAS, Priscila L. Notes to the history of type founding in 20th century Brazil: the case of Funtimod. In: COUTINHO, Solange G. et al. (orgs.). <cite>Proceedings of the 6th Information Design International Conference, 5th InfoDesign, 6th CONGIC</cite>. São Paulo: Blucher, 2014. p. 1270–1278.</li>
+          <li class="key">ARAGÃO, Isabella R.; COSTA, Dayane M. N. da; DIAS, Débora H. M.; MELO, Hélter P. de M.; SANTANA, Nayara R. de; RAMOS, Thaylly S. S. Diversidade tipográfica: um estudo de identificação de tipos em cordéis. In: <cite>Anais do 10º CIDI e do 10º CONGIC</cite>. São Paulo: Blucher, 2021. p. 1603–1620. <span>Base do método em etapas.</span></li>
+          <li class="key">SOARES, L.; ARCANJO, L.; OLIVEIRA, B.; MACEDO, V.; ARAGÃO, I. R. Identificando tipografias impressas na Revista de Pernambuco. In: <cite>8º Congresso Internacional de Design da Informação / 8º CONGIC</cite>. Natal. Blucher Design Proceedings. São Paulo: Blucher. p. 1503–1509. <span>Base da comparação por fisionomia.</span></li>
+        </ol>
+        <h3>Outras referências do artigo</h3>
+        <ol class="refs">
+          <li>FARIAS, Priscila L. Visualizing data on graphic memory research. In: <cite>Selected Readings of the 8th Information Design International Conference. Information Design: Memories</cite>. São Paulo: Blucher, 2019. p. 93–114.</li>
+          <li>VALADARES, Paula Viviana de Rezende e. <cite>O frevo nos discos da Rozenblit: um olhar de designer sobre a representação da indústria cultural</cite>. Dissertação (Mestrado em Design) — Universidade Federal de Pernambuco, Recife, 2007.</li>
+        </ol>
+        <p class="hint">As referências das métricas de comparação (IoU, Chamfer, HD95) ficam em <b>Identificação → Sobreposição → Sobre o ajuste</b>.</p>
+      </div>
+    </div>
+  </section>
 </main>
 
 <datalist id="dlArt"></datalist><datalist id="dlCat"></datalist><datalist id="dlFamAll"></datalist>
@@ -338,11 +400,11 @@
   </div>
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
-<script src="src/paper-core.min.js?v=20261003e"></script>
-<script src="src/imagetracer.min.js?v=20261003e"></script>
-<script src="src/core.js?v=20261003e"></script>
-<script src="src/firebase-config.js?v=20261003e"></script>
-<script src="src/app.js?v=20261003e"></script>
-<script src="src/soft.js?v=20261003e"></script>
+<script src="src/paper-core.min.js?v=20261003f"></script>
+<script src="src/imagetracer.min.js?v=20261003f"></script>
+<script src="src/core.js?v=20261003f"></script>
+<script src="src/firebase-config.js?v=20261003f"></script>
+<script src="src/app.js?v=20261003f"></script>
+<script src="src/soft.js?v=20261003f"></script>
 </body>
 </html>
