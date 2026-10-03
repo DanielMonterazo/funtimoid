@@ -42,6 +42,11 @@
     <div class="stack">
         <div class="panel">
           <header><h2>Imagem</h2><span class="meta" id="srcMeta">—</span></header>
+          <div class="tools" role="toolbar" aria-label="Ferramentas da imagem">
+            <div class="row zoomrow"><label for="rgZoomSrc">Zoom</label><input type="range" id="rgZoomSrc" min="50" max="400" step="10" value="100"><output id="oZoomSrc">100%</output></div>
+            <button class="btn small" id="btnFitSrc" type="button">Ajustar à largura</button>
+            <span class="hint">Arraste sobre a imagem para escolher a área do texto. Acima de 100% aparece rolagem lateral.</span>
+          </div>
           <div class="viewer" id="srcViewer">
             <canvas id="cvSrc" width="10" height="10" aria-label="Imagem original. Arraste para selecionar a área."></canvas>
           </div>
@@ -51,14 +56,13 @@
             <div class="legend"><span><i class="k-guide"></i>caixa</span><span><i class="k-amostra"></i>selecionada</span></div>
             <span class="meta" id="binMeta">—</span></header>
           <div class="tools" role="toolbar" aria-label="Ferramentas do recorte tratado">
-            <div class="seg" id="segTool" role="group" aria-label="Ferramenta">
-              <button data-v="caixas" aria-pressed="true">Caixas</button><button data-v="borracha" aria-pressed="false">Borracha</button><button data-v="pincel" aria-pressed="false">Pincel</button>
+            <div class="seg" id="segTool" role="group" aria-label="Ferramenta de retoque">
+              <button data-v="borracha" aria-pressed="false">Borracha</button><button data-v="pincel" aria-pressed="false">Pincel</button>
             </div>
             <div class="row brushrow"><label for="rgBrush">Tamanho</label><input type="range" id="rgBrush" min="2" max="80" value="16"><output id="oBrush">16</output></div>
             <button class="btn small" id="btnUndo">Desfazer retoque</button>
             <button class="btn small" id="btnClearEdits">Limpar retoques</button>
-            <button class="btn small" id="btnKeepBoxes">Apagar fora das caixas</button>
-            <span class="hint" id="toolHint">Clique numa letra para selecionar; depois use ✎ Ajustar vetor (ou duplo clique) para corrigir o desenho dela. Arraste numa área vazia para desenhar uma caixa.</span>
+            <span class="hint" id="toolHint">Escolha Borracha ou Pincel para retocar. Sem ferramenta ativa, toque numa letra para ajustar o vetor dela.</span>
           </div>
           <div class="viewer" id="binViewer">
             <button type="button" class="vec-fab" id="vecFab" hidden>✎ Ajustar vetor</button>
@@ -81,7 +85,7 @@
               <div class="gl">Ampliação</div>
               <div class="row"><label for="rgZoom">Zoom</label><input type="range" id="rgZoom" min="50" max="400" step="10" value="100"><output id="oZoom">100%</output></div>
               <div class="row"><button class="btn small" id="btnFit" type="button">Ajustar à largura</button></div>
-              <p class="hint">Amplia ou reduz a imagem e o recorte tratado juntos. Acima de 100% aparece rolagem lateral. Também funciona com <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + rolagem do mouse sobre as imagens.</p>
+              <p class="hint">Amplia ou reduz o recorte tratado e o vetor. Acima de 100% aparece rolagem lateral. Também funciona com <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + rolagem do mouse sobre o recorte.</p>
               <div class="row"><label>Resolução</label>
                 <div class="seg" id="segUp" role="group" aria-label="Resolução do tratamento">
                   <button data-v="1" aria-pressed="true">1×</button><button data-v="2" aria-pressed="false">2×</button><button data-v="4" aria-pressed="false">4×</button>
@@ -141,9 +145,11 @@
           <header><h2>Caracteres</h2><span class="meta" id="boxMeta">0 caixas</span></header>
           <div class="body">
             <div class="row">
+              <button class="btn small" id="btnDrawBox" aria-pressed="false">+ Desenhar caixa</button>
+              <button class="btn small" id="btnKeepBoxes">Apagar fora das caixas</button>
               <button class="btn small" id="btnClearBoxes">Limpar caixas</button>
             </div>
-            <p class="hint">Letras coladas? Arraste no recorte tratado para desenhar a caixa à mão. <b>Delete</b> apaga a caixa selecionada.</p>
+            <p class="hint">Letras coladas ou que a detecção perdeu? Use <b>+ Desenhar caixa</b> e arraste em volta da letra no recorte tratado. <b>Delete</b> apaga a caixa selecionada.</p>
             <div class="group">
               <div class="gl">Rotular em sequência</div>
               <div class="row"><input type="text" id="seqInput" placeholder="ex.: E por fim, emocionado" aria-label="Texto na ordem de leitura"><button class="btn small" id="btnSeq">Aplicar</button></div>
