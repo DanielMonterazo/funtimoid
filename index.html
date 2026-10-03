@@ -11,8 +11,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Rokkitt:wght@100..900&display=swap">
-<link rel="stylesheet" href="src/base.css?v=20261003">
-<link rel="stylesheet" href="src/soft.css?v=20261003">
+<link rel="stylesheet" href="src/base.css?v=20261003b">
+<link rel="stylesheet" href="src/soft.css?v=20261003b">
 </head>
 <body>
 <a class="skip" href="#main">Pular para o conteúdo</a>
@@ -57,16 +57,16 @@
             <span class="meta" id="binMeta">—</span></header>
           <div class="tools" role="toolbar" aria-label="Ferramentas do recorte tratado">
             <div class="seg" id="segTool" role="group" aria-label="Ferramenta de retoque">
-              <button data-v="borracha" aria-pressed="false">Borracha</button><button data-v="pincel" aria-pressed="false">Pincel</button>
+              <button data-v="borracha" aria-pressed="true">Borracha</button><button data-v="pincel" aria-pressed="false">Pincel</button>
             </div>
             <div class="row brushrow"><label for="rgBrush">Tamanho</label><input type="range" id="rgBrush" min="2" max="80" value="16"><output id="oBrush">16</output></div>
             <button class="btn small" id="btnUndo">Desfazer retoque</button>
             <button class="btn small" id="btnClearEdits">Limpar retoques</button>
-            <span class="hint" id="toolHint">Escolha Borracha ou Pincel para retocar. Sem ferramenta ativa, toque numa letra para ajustar o vetor dela.</span>
+            <span class="hint" id="toolHint">Pinte sobre o fundo para apagar o que não é letra. Para ajustar o vetor de uma letra, toque no rótulo acima dela. Ctrl/⌘ Z desfaz.</span>
           </div>
           <div class="viewer" id="binViewer">
             <button type="button" class="vec-fab" id="vecFab" hidden>✎ Ajustar vetor</button>
-            <canvas id="cvBin" width="10" height="10" tabindex="0" aria-label="Recorte binarizado. Clique numa caixa para selecionar; arraste numa área vazia para desenhar uma caixa."></canvas>
+            <canvas id="cvBin" data-tool="borracha" width="10" height="10" tabindex="0" aria-label="Recorte binarizado. Pinte com a borracha ou o pincel; toque no rótulo acima de uma letra para selecioná-la."></canvas>
           </div>
         </div>
         <div class="panel">
@@ -136,7 +136,7 @@
                 <button class="btn small" id="btnVecRoi">Vetorizar recorte (SVG)</button>
                 <button class="btn small" id="btnVecEdit">Editar caractere…</button>
               </div>
-              <p class="hint">Vetorize o recorte inteiro ou abra o caractere selecionado no editor de vetor, com caneta, para fechar falhas e acertar curvas antes de identificar. Duplo clique numa caixa também abre o editor.</p>
+              <p class="hint">Vetorize o recorte inteiro ou abra o caractere selecionado no editor de vetor, com caneta, para fechar falhas e acertar curvas antes de identificar. Também dá para tocar no rótulo acima da letra, no recorte tratado.</p>
             </div>
           </div>
         </div>
@@ -321,10 +321,10 @@
   </div>
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
-<script src="src/paper-core.min.js?v=20261003"></script>
-<script src="src/imagetracer.min.js?v=20261003"></script>
-<script src="src/core.js?v=20261003"></script>
-<script src="src/app.js?v=20261003"></script>
-<script src="src/soft.js?v=20261003"></script>
+<script src="src/paper-core.min.js?v=20261003b"></script>
+<script src="src/imagetracer.min.js?v=20261003b"></script>
+<script src="src/core.js?v=20261003b"></script>
+<script src="src/app.js?v=20261003b"></script>
+<script src="src/soft.js?v=20261003b"></script>
 </body>
 </html>
