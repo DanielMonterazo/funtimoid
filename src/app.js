@@ -248,11 +248,6 @@ function evtPos(cv, e) {
   cv.addEventListener('pointerdown', (e) => { if (!S.img) return; cv.setPointerCapture(e.pointerId); const p = evtPos(cv, e); start = { x: p.x / S.dispScale, y: p.y / S.dispScale }; });
   cv.addEventListener('pointermove', (e) => {
     const p = evtPos(cv, e);
-    if (S.tool !== 'caixas') {
-      S.hover = p;
-      if (stroke) { const sc = S.proc.sc; stroke.pts.push([p.x / sc + S.roi.x, p.y / sc + S.roi.y]); paintStroke(S.proc.bin, S.proc.w, S.proc.h, stroke, S.roi, sc, stroke.pts.length - 2); }
-      scheduleBin(); return;
-    }
     if (!start) return; const x = p.x / S.dispScale, y = p.y / S.dispScale;
     if (Math.abs(x - start.x) < 4 && Math.abs(y - start.y) < 4) return;
     const x0 = Math.max(0, Math.min(start.x, x)), y0 = Math.max(0, Math.min(start.y, y));
@@ -405,8 +400,8 @@ function drawBin() {
     }
     let hit = -1, area = Infinity;
     S.boxes.forEach((bb, i) => { const b = toProc(bb); if (p.x >= b.x0 - 1 && p.x <= b.x1 + 1 && p.y >= b.y0 - 1 && p.y <= b.y1 + 1) { const a = (b.x1 - b.x0) * (b.y1 - b.y0); if (a < area) { area = a; hit = i; } } });
-    if (hit >= 0) { S.sel = hit; drawBin(); start = null; return; }
-    start = p;
+    if (hit >= 0 && !S.drawBox) { S.sel = hit; drawBin(); start = null; return; }
+    start = S.drawBox ? p : null;
   });
   cv.addEventListener('pointermove', (e) => {
     const p = evtPos(cv, e);
@@ -417,7 +412,8 @@ function drawBin() {
     }
     if (!start) {
       const over = S.boxes.some((bb) => { const b = toProc(bb); return p.x >= b.x0 - 1 && p.x <= b.x1 + 1 && p.y >= b.y0 - 1 && p.y <= b.y1 + 1; });
-      cv.style.cursor = over ? 'pointer' : ''; cv.title = over ? 'Clique para selecionar · duplo clique para ajustar o vetor' : '';
+      if (S.drawBox) { cv.style.cursor = ''; cv.title = ''; return; }
+      cv.style.cursor = over ? 'pointer' : ''; cv.title = over ? 'Toque para selecionar e ajustar o vetor desta letra' : '';
       return;
     }
     tempBox = { x0: Math.min(start.x, p.x), y0: Math.min(start.y, p.y), x1: Math.max(start.x, p.x), y1: Math.max(start.y, p.y) };
@@ -428,7 +424,7 @@ function drawBin() {
     if (stroke) { stroke = null; updateInk(); return; }
     if (start && tempBox && tempBox.x1 - tempBox.x0 >= 3 && tempBox.y1 - tempBox.y0 >= 3) {
       const nb = { ...fromProc(clampBox({ x0: Math.round(tempBox.x0), y0: Math.round(tempBox.y0), x1: Math.round(tempBox.x1), y1: Math.round(tempBox.y1) })), label: '' };
-      S.boxes.push(nb); reorder(nb);
+      S.boxes.push(nb); reorder(nb); armDrawBox(false);
     }
     start = null; tempBox = null; drawBin();
   });
@@ -478,12 +474,29 @@ let binRAF = 0;
 function scheduleBin() { if (binRAF) return; binRAF = requestAnimationFrame(() => { binRAF = 0; drawBin(); }); }
 function updateInk() { const P = S.proc; let ink = 0; for (let i = 0; i < P.bin.length; i++) ink += P.bin[i]; $('binMeta').textContent = `${P.w}×${P.h}px · tinta ${fmt(ink / P.bin.length * 100)}%` + (S.edits.length ? ` · ${S.edits.length} retoque(s)` : ''); }
 function undoEdit() { if (!S.edits.length) return; S.edits.pop(); process(true); }
-seg('segTool', v => {
-  S.tool = v; $('cvBin').dataset.tool = v; S.hover = null;
-  $('toolHint').textContent = v === 'caixas' ? 'Clique numa letra para selecionar; depois use ✎ Ajustar vetor (ou duplo clique) para corrigir o desenho dela. Arraste numa área vazia para desenhar uma caixa.'
-    : v === 'borracha' ? 'Pinte sobre o fundo para apagar o que não é letra. Ctrl/⌘ Z desfaz.' : 'Pinte para completar traços que o tratamento perdeu. Ctrl/⌘ Z desfaz.';
+// Borracha e Pincel ligam e desligam; sem nenhum ativo, tocar numa letra seleciona e mostra o atalho do vetor
+function setTool(v) {
+  S.tool = v; S.hover = null;
+  if (v !== 'caixas') armDrawBox(false, true);
+  $('cvBin').dataset.tool = S.drawBox ? 'desenhar' : v;
+  $('segTool').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.v === v)));
+  $('toolHint').textContent = v === 'borracha' ? 'Pinte sobre o fundo para apagar o que não é letra. Toque de novo em Borracha para sair. Ctrl/⌘ Z desfaz.'
+    : v === 'pincel' ? 'Pinte para completar traços que o tratamento perdeu. Toque de novo em Pincel para sair. Ctrl/⌘ Z desfaz.'
+    : 'Escolha Borracha ou Pincel para retocar. Sem ferramenta ativa, toque numa letra para ajustar o vetor dela.';
   drawBin();
-});
+}
+$('segTool').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; setTool(S.tool === b.dataset.v ? 'caixas' : b.dataset.v); });
+function armDrawBox(on, silent) {
+  S.drawBox = !!on; const b = $('btnDrawBox');
+  b.setAttribute('aria-pressed', String(S.drawBox)); b.classList.toggle('armed', S.drawBox);
+  b.textContent = S.drawBox ? 'Arraste no recorte tratado…' : '+ Desenhar caixa';
+  if (silent) return;
+  if (S.drawBox && S.tool !== 'caixas') setTool('caixas');
+  $('cvBin').dataset.tool = S.drawBox ? 'desenhar' : S.tool;
+  if (S.drawBox) { $('binViewer').scrollIntoView({ block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' }); toast('Arraste em volta da letra no recorte tratado. Esc cancela.'); }
+}
+$('btnDrawBox').addEventListener('click', () => armDrawBox(!S.drawBox));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.drawBox) armDrawBox(false); });
 $('rgBrush').addEventListener('input', (e) => { S.brush = +e.target.value; $('oBrush').textContent = S.brush; scheduleBin(); });
 $('btnUndo').addEventListener('click', undoEdit);
 $('btnClearEdits').addEventListener('click', () => { if (!S.edits.length) return; S.edits = []; process(true); });
@@ -1511,27 +1524,31 @@ async function loadExample() {
 /* =================================================================
    ZOOM DAS IMAGENS, ATALHO DO EDITOR DE VETOR E AJUDA DAS MÉTRICAS
    ================================================================= */
-S.zoom = 100;
+S.zoom = 100; S.zoomSrc = 100;
 function zoomCanvas(cv) {
   const vw = cv.parentElement; if (!vw || !cv.width) return;
-  const z = (S.zoom || 100) / 100, maxH = window.innerHeight * 0.58;
+  const z = ((cv.id === 'cvSrc' ? S.zoomSrc : S.zoom) || 100) / 100, maxH = window.innerHeight * 0.58;
   const fitW = Math.max(40, Math.min(vw.clientWidth, cv.width * (maxH / cv.height)));
   cv.style.maxWidth = 'none'; cv.style.maxHeight = 'none'; cv.style.height = 'auto';
   cv.style.width = Math.round(fitW * z) + 'px';
 }
-function setZoom(v) {
+// cada vista tem o próprio zoom: a imagem no card Imagem, o recorte tratado no card Ampliação
+function setZoom(v, src) {
   const nv = Math.max(50, Math.min(400, Math.round(v / 10) * 10));
-  const views = ['srcViewer', 'binViewer'].map($);
-  const rel = views.map(vw => ({ x: (vw.scrollLeft + vw.clientWidth / 2) / Math.max(1, vw.scrollWidth), y: (vw.scrollTop + vw.clientHeight / 2) / Math.max(1, vw.scrollHeight) }));
-  S.zoom = nv; $('rgZoom').value = nv; $('oZoom').textContent = nv + '%';
-  zoomCanvas($('cvSrc')); drawBin();
+  const vw = $(src ? 'srcViewer' : 'binViewer');
+  const rel = { x: (vw.scrollLeft + vw.clientWidth / 2) / Math.max(1, vw.scrollWidth), y: (vw.scrollTop + vw.clientHeight / 2) / Math.max(1, vw.scrollHeight) };
+  if (src) { S.zoomSrc = nv; $('rgZoomSrc').value = nv; $('oZoomSrc').textContent = nv + '%'; zoomCanvas($('cvSrc')); }
+  else { S.zoom = nv; $('rgZoom').value = nv; $('oZoom').textContent = nv + '%'; drawBin(); }
   // mantém o mesmo ponto no centro da vista ao ampliar ou reduzir
-  views.forEach((vw, i) => { vw.scrollLeft = rel[i].x * vw.scrollWidth - vw.clientWidth / 2; vw.scrollTop = rel[i].y * vw.scrollHeight - vw.clientHeight / 2; });
+  vw.scrollLeft = rel.x * vw.scrollWidth - vw.clientWidth / 2; vw.scrollTop = rel.y * vw.scrollHeight - vw.clientHeight / 2;
 }
 $('rgZoom').addEventListener('input', (e) => setZoom(+e.target.value));
 $('btnFit').addEventListener('click', () => setZoom(100));
+$('rgZoomSrc').addEventListener('input', (e) => setZoom(+e.target.value, true));
+$('btnFitSrc').addEventListener('click', () => setZoom(100, true));
 ['srcViewer', 'binViewer'].forEach(id => $(id).addEventListener('wheel', (e) => {
-  if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault(); setZoom(S.zoom + (e.deltaY < 0 ? 10 : -10));
+  if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault();
+  const src = id === 'srcViewer'; setZoom((src ? S.zoomSrc : S.zoom) + (e.deltaY < 0 ? 10 : -10), src);
 }, { passive: false }));
 window.addEventListener('resize', () => { zoomCanvas($('cvSrc')); });
 $('binViewer').addEventListener('scroll', () => updateFab(), { passive: true });
