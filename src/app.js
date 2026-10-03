@@ -477,7 +477,7 @@ function drawBin() {
     if (vecValid(bb)) c.setLineDash([4 * k, 3 * k]);
     c.strokeRect(b.x0 - 0.5, b.y0 - 0.5, b.x1 - b.x0 + 2, b.y1 - b.y0 + 2);
     c.setLineDash([]);
-    if (bb.label) { c.fillStyle = selC ? css('--amostra') : css('--muted'); c.fillText(bb.label, b.x0, b.y0 - 2 * k); }
+    if (bb.label) { const chk = needsCheck(bb); c.fillStyle = selC || chk ? css('--amostra') : css('--muted'); c.fillText(bb.label + (chk ? '?' : ''), b.x0, b.y0 - 2 * k); }
   });
   if (S.hover && S.tool !== 'selecao' && !S.drawBox && labelHit(S.hover) < 0) {
     c.beginPath(); c.arc(S.hover.x, S.hover.y, brushProcR(), 0, Math.PI * 2);
@@ -635,14 +635,11 @@ $('btnNext').addEventListener('click', () => moveSel(1));
 $('btnClearBoxes').addEventListener('click', () => { S.boxes = []; S.sel = -1; drawBin(); });
 $('btnDetect').addEventListener('click', () => {
   if (!S.proc) { toast('Abra uma imagem primeiro.'); return; }
-  const P = S.proc;
-  const bx = Core.segment(P.bin, P.w, P.h, Math.max(2, P.minA));
-  S.boxes = bx.map(b => ({ ...fromProc(b), label: '' })); S.sel = S.boxes.length ? 0 : -1;
+  if (!detectBoxes()) { drawBin(); toast('Nenhum caractere encontrado. Ajuste a binarização ou o controle Tirar manchas.'); return; }
   drawBin();
-  toast(S.boxes.length ? `${S.boxes.length} caracteres detectados.` : 'Nenhum caractere encontrado. Ajuste a binarização ou o controle Tirar manchas.');
-  if (S.boxes.length) $('lblInput').focus();
+  if (S.builtin.length) runOcr(true); else toast(`${S.boxes.length} caracteres detectados.`);
 });
-$('lblInput').addEventListener('input', (e) => { if (S.sel < 0) return; S.boxes[S.sel].label = e.target.value.trim(); drawBin(); });
+$('lblInput').addEventListener('input', (e) => { if (S.sel < 0) return; const bb = S.boxes[S.sel]; bb.label = e.target.value.trim(); if (bb.ocr) bb.ocr.ok = true; drawBin(); });
 $('lblInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); moveSel(1); $('lblInput').select(); }
   if (e.key === 'Tab' && !e.shiftKey && S.sel < S.boxes.length - 1) { e.preventDefault(); moveSel(1); $('lblInput').select(); }
@@ -652,7 +649,7 @@ $('seqInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.pr
 function applySeq() {
   const chars = [...$('seqInput').value.replace(/\s+/g, '')];
   if (!chars.length || !S.boxes.length) { toast('Detecte os caracteres e digite o texto antes.'); return; }
-  S.boxes.forEach((b, i) => { b.label = chars[i] || b.label; });
+  S.boxes.forEach((b, i) => { b.label = chars[i] || b.label; if (b.ocr) b.ocr.ok = true; });
   drawBin();
   if (chars.length !== S.boxes.length) toast(`Atenção: ${chars.length} caracteres no texto e ${S.boxes.length} caixas. Confira os rótulos (letras coladas ou pingos separados).`, 5200);
   else toast('Rótulos aplicados em ordem de leitura.');
@@ -668,6 +665,7 @@ function currentMask(bb) {
 function updateLabeler() {
   const n = S.boxes.length, lab = S.boxes.filter(b => b.label).length;
   $('boxMeta').textContent = `${n} caixas · ${lab} rotuladas`;
+  renderOcr();
   $('barCount').textContent = lab ? `${lab} de ${n} caracteres rotulados` : n ? `${n} caixas, nenhuma rotulada` : 'Nenhum caractere detectado';
   $('btnIdentify').disabled = !lab; $('btnDetect').classList.toggle('primary', !n);
   const cv = $('cvSel'); const c = cv.getContext('2d'); c.clearRect(0, 0, cv.width, cv.height);
@@ -1706,6 +1704,254 @@ async function loadExample() {
 }
 
 
+
+/* =================================================================
+   RECONHECIMENTO AUTOMÁTICO DE LETRAS (OCR)
+   Compara cada caixa com os ~9.600 glifos dos catálogos Funtimod (grade 32×32 em bits,
+   IoU com pequenos deslocamentos). 1ª passada: todas as famílias; as famílias que mais
+   combinam com o conjunto viram o filtro da 2ª passada. Depois: pontuação (! . , -),
+   maiúscula/minúscula pela altura e pela palavra, e um grau de confiança para revisar.
+   ================================================================= */
+const OCR = { refs: null };
+function popc(v) { v = v - ((v >>> 1) & 0x55555555); v = (v & 0x33333333) + ((v >>> 2) & 0x33333333); return (((v + (v >>> 4)) & 0x0F0F0F0F) * 0x01010101) >>> 24; }
+function packGrid(g) {
+  const rows = new Uint32Array(32); let n = 0;
+  for (let y = 0; y < 32; y++) { let r = 0; for (let x = 0; x < 32; x++) if (g[y * 32 + x]) { r |= (1 << x); n++; } rows[y] = r >>> 0; }
+  return { rows, n };
+}
+function ocrPrep() {
+  if (OCR.refs || !S.builtin.length) return OCR.refs;
+  OCR.refs = S.builtin.map(g => { const m = maskOf(g); const p = packGrid(Core.normalize(m, 32, 26)); return { label: g.label, fi: g.fi, rows: p.rows, n: p.n, ar: m.w / m.h }; });
+  return OCR.refs;
+}
+// melhor IoU entre a amostra (com deslocamentos de 1 célula) e uma referência
+function gridIoU(A, ref) {
+  let best = 0;
+  for (const sh of A.shifts) {
+    let inter = 0; const R = ref.rows, S2 = sh.rows;
+    for (let y = 0; y < 32; y++) inter += popc(S2[y] & R[y]);
+    const u = sh.n + ref.n - inter; const v = u ? inter / u : 0;
+    if (v > best) best = v;
+  }
+  return best;
+}
+function sampleShifts(m) {
+  const g = Core.normalize(m, 32, 26), out = [];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const rows = new Uint32Array(32); let n = 0;
+    for (let y = 0; y < 32; y++) { const sy = y - dy; if (sy < 0 || sy > 31) continue; let r = 0; for (let x = 0; x < 32; x++) { const sx = x - dx; if (sx >= 0 && sx < 32 && g[sy * 32 + sx]) { r |= (1 << x); n++; } } rows[y] = r >>> 0; }
+    out.push({ rows, n });
+  }
+  return { shifts: out, ar: m.w / m.h };
+}
+function classify(A, refs, fams) {
+  const byLabel = new Map(), byFam = new Map();
+  for (const r of refs) {
+    if (fams && !fams.has(r.fi)) continue;
+    let v = gridIoU(A, r);
+    // proporção muito diferente pesa contra (I × l, o × 0 etc. são parecidos depois de normalizar)
+    v *= Math.exp(-Math.abs(Math.log((A.ar + 0.05) / (r.ar + 0.05))) * 0.6);
+    const L = byLabel.get(r.label); if (!L || v > L) byLabel.set(r.label, v);
+    const F = byFam.get(r.fi); if (!F || v > F) byFam.set(r.fi, v);
+  }
+  const ranked = [...byLabel.entries()].sort((a, b) => b[1] - a[1]).map(([label, score]) => ({ label, score }));
+  return { ranked, byFam };
+}
+const CASE_AMB = new Set([...'cosuvwxzCOSUVWXZ']);
+function ocrBoxes(boxes) {
+  const refs = ocrPrep(); if (!refs) return 0;
+  const items = boxes.map(bb => { const m = currentMask(bb); return m ? { bb, m, A: sampleShifts(m), b: toProc(bb) } : null; }).filter(Boolean);
+  if (!items.length) return 0;
+  // 1ª passada: todas as famílias
+  const famSum = new Map();
+  for (const it of items) { it.r1 = classify(it.A, refs); for (const [fi, v] of it.r1.byFam) famSum.set(fi, (famSum.get(fi) || 0) + v); }
+  // 2ª passada: só as 4 famílias que mais combinam com o conjunto
+  const top = new Set([...famSum.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(e => e[0]));
+  for (const it of items) it.r2 = items.length >= 3 ? classify(it.A, refs, top) : it.r1;
+  // alturas de referência por linha (maiúsculas ≈ as maiores caixas da linha)
+  const hs = items.map(it => it.b.y1 - it.b.y0 + 1).sort((a, b) => a - b), medH = hs[hs.length >> 1] || 1;
+  const lines = [];
+  for (const it of items.slice().sort((a, b) => (a.b.y0 + a.b.y1) - (b.b.y0 + b.b.y1))) {
+    const cy = (it.b.y0 + it.b.y1) / 2; let L = lines.find(l => Math.abs(l.cy - cy) < medH * 0.7);
+    if (!L) { L = { cy, items: [] }; lines.push(L); } L.items.push(it); L.cy = L.items.reduce((s, i) => s + (i.b.y0 + i.b.y1) / 2, 0) / L.items.length;
+  }
+  for (const L of lines) {
+    const H = L.items.map(i => i.b.y1 - i.b.y0 + 1).sort((a, b) => b - a);
+    L.cap = H[Math.min(H.length - 1, Math.floor(H.length * 0.2))];
+    L.base = L.items.map(i => i.b.y1).sort((a, b) => a - b)[L.items.length >> 1];
+    L.items.sort((a, b) => a.b.x0 - b.b.x0);
+    // palavras: separa onde o espaço é bem maior que o espaçamento típico
+    const gaps = L.items.slice(1).map((it, k) => it.b.x0 - L.items[k].b.x1).sort((a, b) => a - b);
+    const g0 = gaps.length ? gaps[gaps.length >> 1] : 0, words = [[]];
+    L.items.forEach((it, k) => { if (k && it.b.x0 - L.items[k - 1].b.x1 > Math.max(g0 * 2.2, L.cap * 0.35)) words.push([]); words[words.length - 1].push(it); it.line = L; });
+    L.words = words;
+  }
+  for (const it of items) {
+    const L = it.line, h = it.b.y1 - it.b.y0 + 1, w = it.b.x1 - it.b.x0 + 1;
+    const R = it.r2.ranked; let label = R[0] ? R[0].label : '';
+    // pontuação, que não existe nos catálogos
+    const comps = maskComponents(it.m);
+    if (h < L.cap * 0.32) {
+      const nearBase = Math.abs(it.b.y1 - L.base) < L.cap * 0.25;
+      label = w > h * 1.8 ? (nearBase ? '_' : '-') : (nearBase ? (h > w * 1.4 ? ',' : '.') : '’'); it.punct = true; it.conf = 0.6;
+    } else if (comps.length === 2 && h > L.cap * 0.6) {
+      const [a, b] = comps.sort((x, y) => x.y0 - y.y0);
+      const small = (c) => (c.y1 - c.y0) < h * 0.3;
+      if (small(b) && !small(a) && /[iIlj1|!]/.test(label)) { label = '!'; it.punct = true; it.conf = 0.8; }
+      else if (small(a) && !small(b) && /[I1l|!]/.test(label)) { label = 'i'; }
+    }
+    it.label = label; it.alts = R.slice(0, 4).map(r => r.label).filter(l => l !== label).slice(0, 3);
+  }
+  // maiúscula × minúscula: primeiro pela posição na linha (letra de altura x ou com descendente é minúscula),
+  // depois, nas formas iguais (c o s u v w x z, I × l), pela maioria da palavra
+  const swapCase = (l) => l === 'l' ? 'I' : l === 'I' ? 'l' : (l === l.toUpperCase() ? l.toLowerCase() : l.toUpperCase());
+  const isPair = (l) => CASE_AMB.has(l) || l === 'I' || l === 'l';
+  for (const L of lines) {
+    const tall = L.items.filter(i => i.b.y1 - i.b.y0 + 1 >= L.cap * 0.85).map(i => i.b.y0).sort((x, y) => x - y);
+    L.top = tall.length ? tall[tall.length >> 1] : Math.min(...L.items.map(i => i.b.y0));
+  }
+  // a mesma conta dentro de cada palavra, porque numa linha podem conviver corpos diferentes
+  for (const L of lines) for (const W of L.words) {
+    const hmax = Math.max(...W.map(i => i.b.y1 - i.b.y0 + 1));
+    const tops = W.filter(i => i.b.y1 - i.b.y0 + 1 >= hmax * 0.85).map(i => i.b.y0).sort((x, y) => x - y);
+    const bases = W.map(i => i.b.y1).sort((x, y) => x - y);
+    const geo = { top: tops[tops.length >> 1], base: bases[bases.length >> 1], cap: hmax, n: W.length };
+    W.forEach(i => { i.word = geo; });
+  }
+  for (const it of items) {
+    if (!/[A-Za-z]/.test(it.label)) continue;
+    const L = it.line, G = it.word;
+    const lowGeom = it.b.y0 > L.top + L.cap * 0.28 || it.b.y1 > L.base + L.cap * 0.18
+      || (G.n >= 3 && (it.b.y0 > G.top + G.cap * 0.2 || it.b.y1 > G.base + G.cap * 0.16));
+    const descends = it.b.y1 > L.base + L.cap * 0.18 || (G.n >= 3 && it.b.y1 > G.base + G.cap * 0.16);
+    if (!lowGeom || it.label !== it.label.toUpperCase() || it.label === 'I') continue;
+    const lo = it.label.toLowerCase(), R = it.r2.ranked, best = R[0] ? R[0].score : 0, cand = R.find(r => r.label === lo);
+    const desc = descends && 'gjpqy'.includes(lo);
+    if (CASE_AMB.has(it.label) || desc || (cand && cand.score >= best * 0.8)) { it.alts = [it.label, ...it.alts.filter(a => a !== lo)].slice(0, 3); it.label = lo; it.caseFixed = true; }
+  }
+  for (const L of lines) for (const W of L.words) {
+    const known = W.filter(it => /[A-Za-z]/.test(it.label) && !isPair(it.label));
+    const upper = known.filter(it => it.label === it.label.toUpperCase()).length;
+    for (const it of W) {
+      if (!isPair(it.label) || it.caseFixed) continue;
+      const h = it.b.y1 - it.b.y0 + 1;
+      const up = known.length ? upper * 2 > known.length : (it.label === 'l' || it.label === 'I') ? it.label === 'I' : h >= L.cap * 0.82;
+      const want = up ? (it.label === 'l' ? 'I' : it.label.toUpperCase()) : (it.label === 'I' ? 'l' : it.label.toLowerCase());
+      if (want !== it.label) { it.alts = [it.label, ...it.alts.filter(a => a !== want)].slice(0, 3); it.label = want; }
+    }
+  }
+  // dígito no meio de letras quase sempre é letra (0 × O, 1 × l, 5 × S…)
+  for (const L of lines) for (const W of L.words) {
+    const letters = W.filter(it => /[A-Za-z]/.test(it.label)).length;
+    if (letters * 2 <= W.length) continue;
+    W.forEach(it => { it.wordLetters = true; });
+    for (const it of W) if (/[0-9]/.test(it.label)) { const alt = it.r2.ranked.find(r => /[A-Za-z]/.test(r.label)); if (alt) { it.alts = [it.label, ...it.alts.filter(a => a !== alt.label)].slice(0, 3); it.label = alt.label; it.digitFix = true; } }
+  }
+  // confiança: distância para a melhor alternativa que seja OUTRA letra (variação de caixa resolvida pelo contexto não conta)
+  const fold = (l) => l === 'I' ? 'l' : l.toLowerCase();
+  for (const it of items) {
+    if (it.punct) continue;
+    const R = it.r2.ranked, f = fold(it.label);
+    const s1 = Math.max(0, ...R.filter(r => fold(r.label) === f).map(r => r.score));
+    const lettersWord = it.wordLetters;
+    const s2 = Math.max(0, ...R.filter(r => fold(r.label) !== f && !(lettersWord && /[0-9]/.test(r.label))).map(r => r.score));
+    it.conf = s1 ? Math.max(0, Math.min(1, (s1 - s2) / Math.max(0.05, s1) * 4) * Math.min(1, s1 / 0.55)) : 0;
+    if (it.digitFix) it.conf = Math.min(it.conf, 0.4);
+  }
+  for (const it of items) if (it.wordLetters) it.alts = it.alts.filter(a => !/[0-9]/.test(a));
+  for (const it of items) { it.bb.label = it.label; it.bb.ocr = { conf: it.conf, alts: it.alts, ok: false }; }
+  return items.length;
+}
+function maskComponents(m) {
+  const { w, h, data } = m, seen = new Uint8Array(w * h), out = [], st = [];
+  for (let i = 0; i < w * h; i++) {
+    if (!data[i] || seen[i]) continue;
+    let x0 = w, y0 = h, x1 = 0, y1 = 0, n = 0; st.push(i); seen[i] = 1;
+    while (st.length) { const j = st.pop(), x = j % w, y = (j / w) | 0; n++; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      for (const k of [j - 1, j + 1, j - w, j + w]) if (k >= 0 && k < w * h && data[k] && !seen[k] && Math.abs((k % w) - x) <= 1) { seen[k] = 1; st.push(k); } }
+    if (n >= 4) out.push({ x0, y0, x1, y1, n });
+  }
+  const big = Math.max(1, ...out.map(c => c.n));
+  return out.filter(c => c.n >= big * 0.03);
+}
+
+
+/* ---------- revisão do reconhecimento ---------- */
+const OCR_LOW = 0.35;
+const needsCheck = (bb) => !!(bb && bb.label && bb.ocr && !bb.ocr.ok && bb.ocr.conf < OCR_LOW);
+function detectBoxes() {
+  const P = S.proc;
+  const bx = Core.segment(P.bin, P.w, P.h, Math.max(2, P.minA));
+  S.boxes = bx.map(b => ({ ...fromProc(b), label: '' })); S.sel = S.boxes.length ? 0 : -1;
+  return S.boxes.length;
+}
+function runOcr(all) {
+  if (!S.proc || !S.boxes.length) { toast('Detecte os caracteres primeiro.'); return; }
+  if (!S.builtin.length) { toast('O catálogo ainda está carregando. Tente de novo em instantes.'); return; }
+  const target = all ? S.boxes : S.boxes.filter(b => !b.label);
+  if (!target.length) { toast('Todas as caixas já têm rótulo. Use Reconhecer de novo para refazer.'); return; }
+  $('ocrStatus').textContent = 'Reconhecendo as letras…';
+  setTimeout(() => {
+    const t0 = performance.now(); ocrBoxes(target); void t0;
+    const chk = S.boxes.filter(needsCheck);
+    S.sel = chk.length ? S.boxes.indexOf(chk[0]) : 0;
+    ocrKey = ''; drawBin();
+    toast(chk.length ? `${target.length} letras reconhecidas. ${chk.length} marcadas para conferir.` : `${target.length} letras reconhecidas. Dê uma olhada rápida e siga para a identificação.`, 4200);
+  }, 30);
+}
+$('btnOcr').addEventListener('click', () => {
+  if (!S.proc) { toast('Abra uma imagem primeiro.'); return; }
+  if (!S.boxes.length && !detectBoxes()) { toast('Nenhum caractere encontrado. Ajuste a binarização ou o controle Tirar manchas.'); drawBin(); return; }
+  runOcr(true);
+});
+let ocrKey = '';
+function renderOcr() {
+  const grid = $('ocrGrid'); if (!grid) return;
+  const key = S.proc ? S.boxes.map(b => `${b.label}${needsCheck(b) ? '?' : ''}${b.ocr ? 'o' : ''}${b.x0},${b.y0},${b.x1},${b.y1}${vecValid(b) ? 'v' : ''}`).join('|') + '#' + S.edits.length + '#' + S.proc.w + '#' + (S.ocrAlts || '') : '';
+  if (key !== ocrKey) {
+    ocrKey = key; grid.innerHTML = '';
+    const ink = css('--ink');
+    S.boxes.forEach((bb, i) => {
+      const cell = document.createElement('div'); cell.className = 'ocr-cell'; cell.setAttribute('role', 'listitem'); cell.dataset.i = i;
+      if (needsCheck(bb)) cell.classList.add('check');
+      const cv = document.createElement('canvas'); cv.width = 44; cv.height = 56; const m = currentMask(bb); if (m) drawMask(cv, m, ink, 4);
+      const inp = document.createElement('input'); inp.type = 'text'; inp.maxLength = 2; inp.className = 'ocr-in'; inp.value = bb.label || ''; inp.setAttribute('aria-label', `Rótulo da letra ${i + 1}`);
+      inp.addEventListener('focus', () => { if (S.sel !== i) { S.sel = i; drawBin(); } inp.select(); });
+      inp.addEventListener('input', () => { bb.label = inp.value.trim(); if (bb.ocr) bb.ocr.ok = true; cell.classList.remove('check'); drawBin(); });
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); if (bb.ocr) bb.ocr.ok = true; focusOcr(nextCheck(i) ?? i + 1); } });
+      cell.append(cv, inp);
+      if (needsCheck(bb) && bb.ocr.alts && bb.ocr.alts.length) {
+        const alts = document.createElement('div'); alts.className = 'ocr-alts';
+        bb.ocr.alts.slice(0, 3).forEach(a => alts.append(button(a, 'alt', () => { bb.label = a; bb.ocr.ok = true; drawBin(); focusOcr(nextCheck(i) ?? i); })));
+        const ok = button('✓', 'alt ok', () => { bb.ocr.ok = true; drawBin(); focusOcr(nextCheck(i) ?? i); }); ok.title = 'Está certo'; ok.setAttribute('aria-label', 'Está certo');
+        alts.append(ok); cell.append(alts);
+      }
+      cell.addEventListener('click', (e) => { if (e.target === cell || e.target === cv) inp.focus(); });
+      grid.append(cell);
+    });
+    const n = S.boxes.length, rec = S.boxes.filter(b => b.ocr).length, chk = S.boxes.filter(needsCheck).length;
+    $('ocrStatus').textContent = !n ? 'Detecte os caracteres: o FuntimoID reconhece cada letra comparando com os catálogos, e você só confere.'
+      : !rec ? 'Use Reconhecer letras para preencher os rótulos automaticamente, ou digite cada um.'
+      : chk ? `${rec} letra(s) reconhecida(s). ${chk} marcada(s) em vermelho para conferir: corrija ou toque em ✓.`
+      : `${rec} letra(s) reconhecida(s), nenhuma com dúvida. Confira de relance e siga para a identificação.`;
+    $('btnOcrNext').hidden = !chk; $('btnOcrOk').hidden = !chk;
+    $('btnOcr').textContent = rec ? 'Reconhecer de novo' : 'Reconhecer letras';
+  }
+  grid.querySelectorAll('.ocr-cell').forEach(c => c.classList.toggle('sel', +c.dataset.i === S.sel));
+}
+function nextCheck(from) {
+  const n = S.boxes.length;
+  for (let k = 1; k <= n; k++) { const j = (from + k) % n; if (needsCheck(S.boxes[j])) return j; }
+  return null;
+}
+function focusOcr(i) {
+  if (i == null || i >= S.boxes.length) return;
+  S.sel = i; drawBin();
+  const inp = $('ocrGrid').querySelector(`.ocr-cell[data-i="${i}"] input`); if (inp) { inp.focus({ preventScroll: true }); inp.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+}
+$('btnOcrNext').addEventListener('click', () => focusOcr(nextCheck(S.sel < 0 ? -1 : S.sel)));
+$('btnOcrOk').addEventListener('click', () => { S.boxes.forEach(b => { if (b.ocr) b.ocr.ok = true; }); drawBin(); toast('Tudo conferido.'); });
+
 /* =================================================================
    ZOOM DAS IMAGENS, ATALHO DO EDITOR DE VETOR E AJUDA DAS MÉTRICAS
    ================================================================= */
@@ -1803,6 +2049,8 @@ async function init() {
   const [okCat, okEx] = await Promise.all([loadCatalog(), loadExample()]);
   if (!okEx && !S.img) $('srcViewer').insertAdjacentHTML('afterbegin', '<div class="empty" id="srcEmpty">Abra a foto de uma capa ou de um impresso para começar.</div>');
   onGlyphs(); fillSampleSelect();
+  // o exemplo também passa pelo reconhecimento automático, para mostrar a revisão
+  if (okCat && S.boxes.length) { ocrBoxes(S.boxes); ocrKey = ''; drawBin(); }
   if (okCat && okEx) await identifyNow(false);
 }
 const mq = window.matchMedia('(prefers-color-scheme: dark)');
