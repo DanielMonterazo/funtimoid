@@ -1532,23 +1532,24 @@ function zoomCanvas(cv) {
   cv.style.maxWidth = 'none'; cv.style.maxHeight = 'none'; cv.style.height = 'auto';
   cv.style.width = Math.round(fitW * z) + 'px';
 }
-// cada vista tem o próprio zoom: a imagem no card Imagem, o recorte tratado no card Ampliação
-function setZoom(v, src) {
+// um zoom só para as duas vistas: o valor escolhido na Imagem vale também para o Recorte tratado
+function setZoom(v) {
   const nv = Math.max(50, Math.min(400, Math.round(v / 10) * 10));
-  const vw = $(src ? 'srcViewer' : 'binViewer');
-  const rel = { x: (vw.scrollLeft + vw.clientWidth / 2) / Math.max(1, vw.scrollWidth), y: (vw.scrollTop + vw.clientHeight / 2) / Math.max(1, vw.scrollHeight) };
-  if (src) { S.zoomSrc = nv; $('rgZoomSrc').value = nv; $('oZoomSrc').textContent = nv + '%'; zoomCanvas($('cvSrc')); }
-  else { S.zoom = nv; $('rgZoom').value = nv; $('oZoom').textContent = nv + '%'; drawBin(); }
-  // mantém o mesmo ponto no centro da vista ao ampliar ou reduzir
-  vw.scrollLeft = rel.x * vw.scrollWidth - vw.clientWidth / 2; vw.scrollTop = rel.y * vw.scrollHeight - vw.clientHeight / 2;
+  const views = ['srcViewer', 'binViewer'].map($);
+  const rel = views.map(vw => ({ x: (vw.scrollLeft + vw.clientWidth / 2) / Math.max(1, vw.scrollWidth), y: (vw.scrollTop + vw.clientHeight / 2) / Math.max(1, vw.scrollHeight) }));
+  S.zoom = S.zoomSrc = nv;
+  ['rgZoom', 'rgZoomSrc'].forEach(id => { $(id).value = nv; }); ['oZoom', 'oZoomSrc'].forEach(id => { $(id).textContent = nv + '%'; });
+  zoomCanvas($('cvSrc')); drawBin();
+  // mantém o mesmo ponto no centro de cada vista ao ampliar ou reduzir
+  views.forEach((vw, i) => { vw.scrollLeft = rel[i].x * vw.scrollWidth - vw.clientWidth / 2; vw.scrollTop = rel[i].y * vw.scrollHeight - vw.clientHeight / 2; });
 }
 $('rgZoom').addEventListener('input', (e) => setZoom(+e.target.value));
 $('btnFit').addEventListener('click', () => setZoom(100));
-$('rgZoomSrc').addEventListener('input', (e) => setZoom(+e.target.value, true));
-$('btnFitSrc').addEventListener('click', () => setZoom(100, true));
+$('rgZoomSrc').addEventListener('input', (e) => setZoom(+e.target.value));
+$('btnFitSrc').addEventListener('click', () => setZoom(100));
 ['srcViewer', 'binViewer'].forEach(id => $(id).addEventListener('wheel', (e) => {
   if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault();
-  const src = id === 'srcViewer'; setZoom((src ? S.zoomSrc : S.zoom) + (e.deltaY < 0 ? 10 : -10), src);
+  setZoom(S.zoom + (e.deltaY < 0 ? 10 : -10));
 }, { passive: false }));
 window.addEventListener('resize', () => { zoomCanvas($('cvSrc')); });
 $('binViewer').addEventListener('scroll', () => updateFab(), { passive: true });
