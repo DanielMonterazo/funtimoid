@@ -1539,6 +1539,7 @@ function setZoom(v) {
   const rel = views.map(vw => ({ x: (vw.scrollLeft + vw.clientWidth / 2) / Math.max(1, vw.scrollWidth), y: (vw.scrollTop + vw.clientHeight / 2) / Math.max(1, vw.scrollHeight) }));
   S.zoom = S.zoomSrc = nv;
   ['rgZoom', 'rgZoomSrc'].forEach(id => { $(id).value = nv; }); ['oZoom', 'oZoomSrc'].forEach(id => { $(id).textContent = nv + '%'; });
+  ['btnFit', 'btnFitSrc'].forEach(id => { $(id).disabled = nv === 100; });
   zoomCanvas($('cvSrc')); drawBin();
   // mantém o mesmo ponto no centro de cada vista ao ampliar ou reduzir
   views.forEach((vw, i) => { vw.scrollLeft = rel[i].x * vw.scrollWidth - vw.clientWidth / 2; vw.scrollTop = rel[i].y * vw.scrollHeight - vw.clientHeight / 2; });
