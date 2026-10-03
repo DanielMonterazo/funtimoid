@@ -58,9 +58,10 @@
             <button class="btn small" id="btnUndo">Desfazer retoque</button>
             <button class="btn small" id="btnClearEdits">Limpar retoques</button>
             <button class="btn small" id="btnKeepBoxes">Apagar fora das caixas</button>
-            <span class="hint" id="toolHint">Clique numa caixa para selecionar; arraste numa área vazia para desenhar uma caixa.</span>
+            <span class="hint" id="toolHint">Clique numa letra para selecionar; depois use ✎ Ajustar vetor (ou duplo clique) para corrigir o desenho dela. Arraste numa área vazia para desenhar uma caixa.</span>
           </div>
           <div class="viewer" id="binViewer">
+            <button type="button" class="vec-fab" id="vecFab" hidden>✎ Ajustar vetor</button>
             <canvas id="cvBin" width="10" height="10" tabindex="0" aria-label="Recorte binarizado. Clique numa caixa para selecionar; arraste numa área vazia para desenhar uma caixa."></canvas>
           </div>
         </div>
@@ -77,11 +78,16 @@
               <p class="hint">Também dá para arrastar o arquivo para a imagem ou colar (Ctrl/⌘ V). Arraste sobre a imagem para escolher a área.</p>
             </div>
             <div class="group">
-              <div class="gl">Ampliação do recorte</div>
-              <div class="seg" id="segUp" role="group" aria-label="Ampliação">
-                <button data-v="1" aria-pressed="true">1×</button><button data-v="2" aria-pressed="false">2×</button><button data-v="4" aria-pressed="false">4×</button>
+              <div class="gl">Ampliação</div>
+              <div class="row"><label for="rgZoom">Zoom</label><input type="range" id="rgZoom" min="50" max="400" step="10" value="100"><output id="oZoom">100%</output></div>
+              <div class="row"><button class="btn small" id="btnFit" type="button">Ajustar à largura</button></div>
+              <p class="hint">Amplia ou reduz a imagem e o recorte tratado juntos. Acima de 100% aparece rolagem lateral. Também funciona com <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + rolagem do mouse sobre as imagens.</p>
+              <div class="row"><label>Resolução</label>
+                <div class="seg" id="segUp" role="group" aria-label="Resolução do tratamento">
+                  <button data-v="1" aria-pressed="true">1×</button><button data-v="2" aria-pressed="false">2×</button><button data-v="4" aria-pressed="false">4×</button>
+                </div>
               </div>
-              <p class="hint">Interpolação bicúbica, útil para texto em corpo pequeno. Não inventa detalhes.</p>
+              <p class="hint">Reamostra o recorte (interpolação bicúbica) antes de binarizar; ajuda em texto de corpo pequeno e não inventa detalhes.</p>
             </div>
             <div class="group">
               <div class="gl">Separar a tinta por</div>
@@ -249,7 +255,7 @@
         <div class="progress" id="prog" hidden><i></i></div>
         <div class="tablewrap">
           <table class="rank" id="rankTable">
-            <thead><tr><th>#</th><th>Família de referência</th><th>Similaridade</th><th class="num" title="Interseção sobre união">IoU</th><th class="num" title="Distância média entre contornos, em % da altura">Chamfer</th><th class="num" title="Hausdorff 95%: maior desvio, ignorando 5% de ruído">HD95</th><th class="num" title="Largura relativa da amostra">Largura</th><th class="num" title="Espessura do traço da amostra em relação à referência">Peso</th><th class="num">Letras</th></tr></thead>
+            <thead><tr><th>#</th><th>Família de referência</th><th>Similaridade <button type="button" class="qi" data-help="score" aria-label="O que é Similaridade?" aria-expanded="false">?</button></th><th class="num">IoU <button type="button" class="qi" data-help="iou" aria-label="O que é IoU?" aria-expanded="false">?</button></th><th class="num">Chamfer <button type="button" class="qi" data-help="chamfer" aria-label="O que é Chamfer?" aria-expanded="false">?</button></th><th class="num">HD95 <button type="button" class="qi" data-help="hd95" aria-label="O que é HD95?" aria-expanded="false">?</button></th><th class="num">Largura <button type="button" class="qi" data-help="largura" aria-label="O que é Largura?" aria-expanded="false">?</button></th><th class="num">Peso <button type="button" class="qi" data-help="peso" aria-label="O que é Peso?" aria-expanded="false">?</button></th><th class="num">Letras <button type="button" class="qi" data-help="letras" aria-label="O que é Letras?" aria-expanded="false">?</button></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -272,10 +278,10 @@
               <button data-v="cores" aria-pressed="true">Cores</button><button data-v="opac" aria-pressed="false">Opacidade 50%</button><button data-v="mapa" aria-pressed="false">Mapa de distância</button>
             </div>
             <div class="metrics">
-              <div class="metric"><div class="k">Similaridade</div><div class="v" id="mScore">—</div></div>
-              <div class="metric"><div class="k">IoU</div><div class="v" id="mIou">—</div></div>
-              <div class="metric"><div class="k">Chamfer</div><div class="v" id="mCh">—</div></div>
-              <div class="metric"><div class="k">HD95</div><div class="v" id="mHd">—</div></div>
+              <div class="metric"><div class="k">Similaridade <button type="button" class="qi" data-help="score" aria-label="O que é Similaridade?" aria-expanded="false">?</button></div><div class="v" id="mScore">—</div></div>
+              <div class="metric"><div class="k">IoU <button type="button" class="qi" data-help="iou" aria-label="O que é IoU?" aria-expanded="false">?</button></div><div class="v" id="mIou">—</div></div>
+              <div class="metric"><div class="k">Chamfer <button type="button" class="qi" data-help="chamfer" aria-label="O que é Chamfer?" aria-expanded="false">?</button></div><div class="v" id="mCh">—</div></div>
+              <div class="metric"><div class="k">HD95 <button type="button" class="qi" data-help="hd95" aria-label="O que é HD95?" aria-expanded="false">?</button></div><div class="v" id="mHd">—</div></div>
             </div>
             <div class="group">
               <div class="gl">Ajuste manual da referência</div>
@@ -285,7 +291,13 @@
                 <div class="row"><label for="ovSc">Escala</label><input type="range" id="ovSc" min="85" max="115" value="100"><output id="oSc">100%</output></div>
                 <div class="row"><label for="ovG">Ganho de tinta</label><input type="range" id="ovG" min="-6" max="6" value="0"><output id="oG">0</output></div>
               </div>
-              <details class="more"><summary>Sobre o ajuste</summary><div><p><b>Ganho de tinta</b> engrossa (+) ou afina (−) a amostra, para descontar o espalhamento da tinta na impressão tipográfica.</p><p>As métricas desta vista são recalculadas em resolução maior (256 px), por isso podem diferir um pouco das miniaturas.</p></div></details>
+              <details class="more"><summary>Sobre o ajuste</summary><div><p><b>Ganho de tinta</b> engrossa (+) ou afina (−) a amostra, para descontar o espalhamento da tinta na impressão tipográfica.</p><p>As métricas desta vista são recalculadas em resolução maior (256 px), por isso podem diferir um pouco das miniaturas.</p><p><b>Referências das métricas</b></p><ol class="refs">
+<li>Jaccard, P. (1912). The distribution of the flora in the alpine zone. <i>New Phytologist</i>, 11(2), 37–50. <span>(IoU, também chamado índice de Jaccard)</span></li>
+<li>Barrow, H. G., Tenenbaum, J. M., Bolles, R. C., &amp; Wolf, H. C. (1977). Parametric correspondence and chamfer matching: two new techniques for image matching. <i>Proceedings of IJCAI 1977</i>, 659–663. <span>(Chamfer)</span></li>
+<li>Borgefors, G. (1988). Hierarchical chamfer matching: a parametric edge matching algorithm. <i>IEEE Transactions on Pattern Analysis and Machine Intelligence</i>, 10(6), 849–865. <span>(Chamfer)</span></li>
+<li>Huttenlocher, D. P., Klanderman, G. A., &amp; Rucklidge, W. J. (1993). Comparing images using the Hausdorff distance. <i>IEEE Transactions on Pattern Analysis and Machine Intelligence</i>, 15(9), 850–863. <span>(Hausdorff e a versão parcial por percentil, base do HD95)</span></li>
+<li>Felzenszwalb, P. F., &amp; Huttenlocher, D. P. (2012). Distance transforms of sampled functions. <i>Theory of Computing</i>, 8, 415–428. <span>(transformada de distância usada para calcular Chamfer e HD95)</span></li>
+</ol><p>A nota de Similaridade (55% IoU + 45% Chamfer) e a compensação de ganho de tinta são escolhas do FuntimoID, calibradas nos catálogos; não vêm de um artigo.</p></div></details>
               <div class="ov-actions"><button class="btn small" id="btnOvReset">Voltar ao encaixe automático</button><button class="btn small" id="btnOvPng">Exportar PNG</button></div>
             </div>
           </div>
