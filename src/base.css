@@ -473,3 +473,11 @@ kbd { font: inherit; font-size: 0.75rem; padding: 0 5px; border-radius: 4px; bor
 .refs-list .refs li.key { padding-left: 4px; }
 .refs-list .refs li.key::marker { color: var(--amostra); font-weight: 700; }
 .refs-list .refs li span { display: block; font-size: 0.9em; }
+
+/* tratamento: as quatro etapas lado a lado, para ver o recorte tratado e os controles ao mesmo tempo */
+.panel .body.tgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1180px) { .panel .body.tgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .panel .body.tgrid { grid-template-columns: minmax(0, 1fr); } }
+.tgrid .row:has(input[type=range]) { grid-template-columns: minmax(70px, 96px) minmax(60px, 1fr) auto; }
+.tool-sep { width: 1px; align-self: stretch; background: var(--rule); margin-inline: 2px; }
+@media (max-width: 640px) { .tool-sep { display: none; } }

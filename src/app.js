@@ -52,11 +52,11 @@ function toast(msg, ms = 3200) {
 const S = {
   img: null, disp: null, dispScale: 1,
   roi: null,
-  p: { up: 1, mode: 'lum', ink: [200, 40, 90], pol: 'auto', method: 'multi', win: 60, k: 0.25, thr: 128, close: 0, min: 4, vl: 0, hl: 0, levels: 4 },
+  p: { up: 1, mode: 'cor', ink: [40, 40, 40], pol: 'auto', method: 'multi', win: 60, k: 0.25, thr: 128, close: 0, min: 4, vl: 0, hl: 0, levels: 4 },
   tool: 'selecao', brush: 16, edits: [], hover: null,
   proc: null,
   boxes: [], sel: -1,
-  picking: false,
+  picking: false, inkAuto: true,
   dest: 'sample',
   glyphs: [], temp: [], builtin: [], fams: [], famGroups: [],
   kindFilter: 'all', search: '',
@@ -303,7 +303,7 @@ function setImage(canvas, label) {
   const c = d.getContext('2d'); c.imageSmoothingQuality = 'high'; c.drawImage(canvas, 0, 0, d.width, d.height);
   S.disp = d; S.dispScale = sc;
   S.roi = { x: 0, y: 0, w: canvas.width, h: canvas.height };
-  S.boxes = []; S.sel = -1; S.edits = [];
+  S.boxes = []; S.sel = -1; S.edits = []; S.inkAuto = true;
   $('srcMeta').textContent = `${label} · ${canvas.width}×${canvas.height}px`;
   drawSrc(); process(true);
 }
@@ -370,7 +370,7 @@ function pickInk(x, y) {
   const c = S.img.getContext('2d'); const r = 2;
   const d = c.getImageData(Math.max(0, Math.round(x) - r), Math.max(0, Math.round(y) - r), 2 * r + 1, 2 * r + 1).data;
   let R = 0, G = 0, B = 0, n = 0; for (let i = 0; i < d.length; i += 4) { R += d[i]; G += d[i + 1]; B += d[i + 2]; n++; }
-  S.p.ink = [R / n, G / n, B / n].map(Math.round);
+  S.p.ink = [R / n, G / n, B / n].map(Math.round); S.inkAuto = false;
   S.picking = false; $('btnPick').setAttribute('aria-pressed', 'false'); $('btnPick').classList.remove('armed'); $('btnPick').textContent = 'Escolher cor na imagem';
   $('inkSwatch').style.background = `rgb(${S.p.ink.join(',')})`;
   process();
@@ -378,7 +378,7 @@ function pickInk(x, y) {
 
 /* controles */
 seg('segUp', v => { S.p.up = +v; process(); });
-seg('segMode', v => { S.p.mode = v; $('inkRow').hidden = v !== 'cor'; $('polRow').hidden = v === 'cor'; process(); });
+seg('segMode', v => { S.p.mode = v; $('inkRow').hidden = $('inkHint').hidden = v !== 'cor'; $('polRow').hidden = v === 'cor'; process(); });
 seg('segPol', v => { S.p.pol = v; process(); });
 seg('segBin', v => { S.p.method = v; $('rowWin').hidden = $('rowK').hidden = v !== 'sauvola'; $('rowThr').hidden = v !== 'manual'; $('rowLev').hidden = v !== 'multi'; process(); });
 $('btnPick').addEventListener('click', () => {
@@ -408,6 +408,17 @@ function process(now) {
   if (procRAF) return;
   procRAF = requestAnimationFrame(() => { procRAF = 0; runProcess(); });
 }
+// cor da tinta automática: separa claro × escuro (Otsu) e fica com a média da classe minoritária,
+// que num impresso costuma ser a tinta; vale até a pessoa escolher uma cor com o conta-gotas
+function autoInk(rgba, w, h) {
+  const g = Core.toGray(rgba, w, h), t = Core.otsu(g);
+  const acc = [[0, 0, 0, 0], [0, 0, 0, 0]];
+  for (let i = 0, n = w * h; i < n; i++) { const k = g[i] < t ? 0 : 1, a = acc[k]; a[0] += rgba[i * 4]; a[1] += rgba[i * 4 + 1]; a[2] += rgba[i * 4 + 2]; a[3]++; }
+  const m = acc[0][3] && acc[0][3] <= acc[1][3] ? acc[0] : acc[1][3] ? acc[1] : acc[0];
+  if (!m[3]) return;
+  S.p.ink = [m[0] / m[3], m[1] / m[3], m[2] / m[3]].map(Math.round);
+  $('inkSwatch').style.background = `rgb(${S.p.ink.join(',')})`;
+}
 function runProcess() {
   if (!S.img || !S.roi) return;
   const r = S.roi, LIMIT = 3.2e6;
@@ -419,6 +430,7 @@ function runProcess() {
   c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
   c.drawImage(S.img, r.x, r.y, r.w, r.h, 0, 0, w, h);
   const rgba = c.getImageData(0, 0, w, h).data;
+  if (S.p.mode === 'cor' && S.inkAuto) autoInk(rgba, w, h);
   const gray = S.p.mode === 'cor' ? Core.colorDistGray(rgba, w, h, S.p.ink) : Core.toGray(rgba, w, h);
   const winPx = Math.max(15, Math.round(S.p.win / 100 * Math.min(w, h)) | 1);
   $('oWin').title = `${winPx} px`;
@@ -1971,14 +1983,11 @@ function setZoom(v) {
   const views = ['srcViewer', 'binViewer'].map($);
   const rel = views.map(vw => ({ x: (vw.scrollLeft + vw.clientWidth / 2) / Math.max(1, vw.scrollWidth), y: (vw.scrollTop + vw.clientHeight / 2) / Math.max(1, vw.scrollHeight) }));
   S.zoom = S.zoomSrc = nv;
-  ['rgZoom', 'rgZoomSrc'].forEach(id => { $(id).value = nv; }); ['oZoom', 'oZoomSrc'].forEach(id => { $(id).textContent = nv + '%'; });
-  ['btnFit', 'btnFitSrc'].forEach(id => { $(id).disabled = nv === 100; });
+  $('rgZoomSrc').value = nv; $('oZoomSrc').textContent = nv + '%'; $('btnFitSrc').disabled = nv === 100;
   zoomCanvas($('cvSrc')); drawBin();
   // mantém o mesmo ponto no centro de cada vista ao ampliar ou reduzir
   views.forEach((vw, i) => { vw.scrollLeft = rel[i].x * vw.scrollWidth - vw.clientWidth / 2; vw.scrollTop = rel[i].y * vw.scrollHeight - vw.clientHeight / 2; });
 }
-$('rgZoom').addEventListener('input', (e) => setZoom(+e.target.value));
-$('btnFit').addEventListener('click', () => setZoom(100));
 $('rgZoomSrc').addEventListener('input', (e) => setZoom(+e.target.value));
 $('btnFitSrc').addEventListener('click', () => setZoom(100));
 ['srcViewer', 'binViewer'].forEach(id => $(id).addEventListener('wheel', (e) => {
