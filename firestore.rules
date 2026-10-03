@@ -1,0 +1,9 @@
+rules_version = '2';
+// Cada conta Google só lê e grava as próprias letras: users/{uid}/glyphs/{id}
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/glyphs/{id} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
