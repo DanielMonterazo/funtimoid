@@ -11,8 +11,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Host+Grotesk:ital,wght@0,300..800;1,300..800&family=Rokkitt:wght@100..900&display=swap">
-<link rel="stylesheet" href="src/base.css?v=20261003g">
-<link rel="stylesheet" href="src/soft.css?v=20261003g">
+<link rel="stylesheet" href="src/base.css?v=20261003h">
+<link rel="stylesheet" href="src/soft.css?v=20261003h">
 </head>
 <body>
 <a class="skip" href="#main">Pular para o conteúdo</a>
@@ -46,7 +46,11 @@
           <div class="tools" role="toolbar" aria-label="Ferramentas da imagem">
             <div class="row zoomrow"><label for="rgZoomSrc">Zoom</label><input type="range" id="rgZoomSrc" min="50" max="400" step="10" value="100"><output id="oZoomSrc">100%</output></div>
             <button class="btn small" id="btnFitSrc" type="button" disabled>Voltar a 100%</button>
-            <span class="hint">Arraste sobre a imagem para escolher a área do texto. O zoom vale também para o recorte tratado.</span>
+            <span class="tool-sep" aria-hidden="true"></span>
+            <label class="btn small" for="fileImg">Abrir imagem…</label>
+            <input type="file" id="fileImg" accept="image/*" hidden>
+            <button class="btn small" id="btnFull">Área inteira</button>
+            <span class="hint">Arraste sobre a imagem para escolher a área do texto. Também dá para arrastar o arquivo para cá ou colar (Ctrl/⌘ V). O zoom vale também para o recorte tratado.</span>
           </div>
           <div class="viewer" id="srcViewer">
             <canvas id="cvSrc" width="10" height="10" aria-label="Imagem original. Arraste para selecionar a área."></canvas>
@@ -74,36 +78,16 @@
           <header><h2>Tratamento</h2></header>
           <div class="body tgrid">
             <div class="group">
-              <div class="gl">Imagem e área</div>
-              <div class="row">
-                <label class="btn small" for="fileImg">Abrir imagem…</label>
-                <input type="file" id="fileImg" accept="image/*" hidden>
-                <button class="btn small" id="btnFull">Área inteira</button>
-              </div>
-              <p class="hint">Também dá para arrastar o arquivo para a imagem ou colar (Ctrl/⌘ V). Arraste sobre a imagem para escolher a área.</p>
-            </div>
-            <div class="group">
-              <div class="gl">Ampliação</div>
-              <div class="row"><label for="rgZoom">Zoom</label><input type="range" id="rgZoom" min="50" max="400" step="10" value="100"><output id="oZoom">100%</output></div>
-              <div class="row"><button class="btn small" id="btnFit" type="button" disabled>Voltar a 100%</button></div>
-              <p class="hint">O mesmo zoom do card Imagem: mudar aqui ou lá amplia as duas vistas juntas. Acima de 100% aparece rolagem lateral. Também funciona com <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + rolagem do mouse.</p>
-              <div class="row"><label>Resolução</label>
-                <div class="seg" id="segUp" role="group" aria-label="Resolução do tratamento">
-                  <button data-v="1" aria-pressed="true">1×</button><button data-v="2" aria-pressed="false">2×</button><button data-v="4" aria-pressed="false">4×</button>
-                </div>
-              </div>
-              <p class="hint">Reamostra o recorte (interpolação bicúbica) antes de binarizar; ajuda em texto de corpo pequeno e não inventa detalhes.</p>
-            </div>
-            <div class="group">
               <div class="gl">Separar a tinta por</div>
               <div class="seg" id="segMode" role="group" aria-label="Modo de separação">
-                <button data-v="lum" aria-pressed="true">Luminância</button><button data-v="cor" aria-pressed="false">Cor da tinta</button>
+                <button data-v="cor" aria-pressed="true">Cor da tinta</button><button data-v="lum" aria-pressed="false">Luminância</button>
               </div>
-              <div class="row" id="inkRow" hidden>
+              <div class="row" id="inkRow">
                 <span class="swatch" id="inkSwatch"></span>
                 <button class="btn small" id="btnPick" aria-pressed="false">Escolher cor na imagem</button>
               </div>
-              <div class="row" id="polRow">
+              <p class="hint" id="inkHint">A cor da tinta é detectada sozinha em cada recorte. Se o fundo também tiver cor, toque em Escolher cor e clique numa letra.</p>
+              <div class="row" id="polRow" hidden>
                 <label>Tinta</label>
                 <div class="seg" id="segPol" role="group" aria-label="Polaridade">
                   <button data-v="auto" aria-pressed="true">Auto</button><button data-v="dark" aria-pressed="false">Escura</button><button data-v="light" aria-pressed="false">Clara</button>
@@ -120,6 +104,11 @@
               <div class="row" id="rowLev"><label for="rgLev">Faixas de tom</label><input type="range" id="rgLev" min="3" max="5" value="4"><output id="oLev">4</output></div>
               <div class="row" id="rowThr" hidden><label for="rgThr">Limiar</label><input type="range" id="rgThr" min="0" max="255" value="128"><output id="oThr">128</output></div>
               <p class="hint">Comece pelo <b>Multinível</b>; troque se as letras saírem falhadas ou com fundo junto.</p>
+              <div class="row"><label>Resolução</label>
+                <div class="seg" id="segUp" role="group" aria-label="Resolução do tratamento" title="Reamostra o recorte antes de binarizar; ajuda em texto de corpo pequeno e não inventa detalhes.">
+                  <button data-v="1" aria-pressed="true">1×</button><button data-v="2" aria-pressed="false">2×</button><button data-v="4" aria-pressed="false">4×</button>
+                </div>
+              </div>
               <details class="more"><summary>Qual método usar</summary><div><p><b>Multinível</b> divide a imagem em faixas de tom e fica só com a mais clara ou a mais escura: é o melhor para texto sobre foto ou fundo movimentado.</p><p><b>Sauvola</b> calcula um limiar local, bom para papel manchado e iluminação desigual; a janela é uma fração da altura do recorte.</p><p><b>Otsu</b> usa um limiar único para a imagem toda. <b>Manual</b> deixa você escolher esse limiar.</p></div></details>
             </div>
             <div class="group">
@@ -400,11 +389,11 @@
   </div>
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
-<script src="src/paper-core.min.js?v=20261003g"></script>
-<script src="src/imagetracer.min.js?v=20261003g"></script>
-<script src="src/core.js?v=20261003g"></script>
-<script src="src/firebase-config.js?v=20261003g"></script>
-<script src="src/app.js?v=20261003g"></script>
-<script src="src/soft.js?v=20261003g"></script>
+<script src="src/paper-core.min.js?v=20261003h"></script>
+<script src="src/imagetracer.min.js?v=20261003h"></script>
+<script src="src/core.js?v=20261003h"></script>
+<script src="src/firebase-config.js?v=20261003h"></script>
+<script src="src/app.js?v=20261003h"></script>
+<script src="src/soft.js?v=20261003h"></script>
 </body>
 </html>
